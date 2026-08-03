@@ -114,7 +114,7 @@ pub async fn admin_account_guard(user_id: &String, ss: &Arc<SupportingService>) 
     Ok(())
 }
 
-pub async fn server_key_validation_guard(_flag: bool) -> Result<(), Error> {
+pub async fn server_key_validation_guard(_flag: bool) -> Result<()> {
     Ok(())
 }
 
