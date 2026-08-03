@@ -64,7 +64,7 @@ volumes:
   postgres_storage:
 ```
 
-Then run `docker compose up -d` and visit `http://localhost:8000`. For production setups, see the [installation guide](https://docs.ryot.io).
+Then run `docker compose up -d` and visit `http://localhost:8000`. For production setups, see the [installation guide](https://docs.ryot.io)..
 
 ## What is Ryot?
 
