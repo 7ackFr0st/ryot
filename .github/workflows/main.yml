@@ -208,10 +208,10 @@ jobs:
      
       - name: Log in to the docker hub container registry
         uses: docker/login-action@28fdb31ff34708d19615a74d67103ddc2ea9725c
-        continue-on-error: true
         with:
-          username: ${{ env.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_TOKEN }}
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
       - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051
