@@ -98,12 +98,14 @@ import { DisplayShowSeasonEpisodesModal } from "~/components/routes/media-item/m
 import { MEDIA_DETAILS_HEIGHT, reviewYellow } from "~/lib/shared/constants";
 import { convertTimestampToUtcString, dayjsLib } from "~/lib/shared/date-utils";
 import {
+	useAddEntitiesToCollectionMutation,
 	useConfirmSubmit,
 	useDeployBulkMetadataProgressUpdateMutation,
 	useMetadataDetails,
 	useMetadataGroupDetails,
 	useMetadataGroupTranslationValue,
 	useMetadataTranslationValue,
+	useUserDetails,
 	useUserMetadataDetails,
 	useUserPreferences,
 } from "~/lib/shared/hooks";
@@ -244,6 +246,8 @@ export default function Page() {
 		loaderData.metadataId,
 	);
 	const userMetadataDetails = useUserMetadataDetails(loaderData.metadataId);
+	const userDetails = useUserDetails();
+	const addEntitiesToCollection = useAddEntitiesToCollectionMutation();
 	const averageRatingValue = convertRatingToUserScale(
 		userMetadataDetails.data?.averageRating,
 		userPreferences.general.reviewScale,
@@ -911,6 +915,29 @@ export default function Page() {
 												}}
 											>
 												Post a review
+											</Button>
+										) : null}
+										{!userMetadataDetails.data?.collections.some(
+											(c) => c.details.collectionName === "Watchlist",
+										) ? (
+											<Button
+												variant="outline"
+												loading={addEntitiesToCollection.isPending}
+												onClick={() => {
+													addEntitiesToCollection.mutate({
+														collectionName: "Watchlist",
+														creatorUserId: userDetails.id,
+														entities: [
+															{
+																information: {},
+																entityLot: EntityLot.Metadata,
+																entityId: loaderData.metadataId,
+															},
+														],
+													});
+												}}
+											>
+												Add to watchlist
 											</Button>
 										) : null}
 										<Button

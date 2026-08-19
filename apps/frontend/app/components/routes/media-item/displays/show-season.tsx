@@ -1,8 +1,11 @@
-import { Box, Button } from "@mantine/core";
+import { Box, Button, Group } from "@mantine/core";
+import type { MetadataProgressUpdateInput } from "@ryot/generated/graphql/backend/graphql";
 import { EntityTranslationVariant } from "@ryot/generated/graphql/backend/graphql";
 import { sum } from "@ryot/ts-utils";
 import { useMemo } from "react";
 import {
+	useDeployBulkMetadataProgressUpdateMutation,
+	useMetadataDetails,
 	useMetadataTranslationValue,
 	useUserMetadataDetails,
 } from "~/lib/shared/hooks";
@@ -23,6 +26,9 @@ export const DisplayShowSeason = (props: {
 		props.metadataId,
 	);
 	const { initializeMetadataToUpdate } = useMetadataProgressUpdate();
+	const [{ data: metadataDetails }] = useMetadataDetails(props.metadataId);
+	const deployBulkMetadataProgressUpdate =
+		useDeployBulkMetadataProgressUpdateMutation(metadataDetails?.title);
 
 	const seasonProgress = userMetadataDetails?.showProgress?.[props.seasonIdx];
 	const numTimesSeen = seasonProgress?.timesSeen || 0;
@@ -59,20 +65,47 @@ export const DisplayShowSeason = (props: {
 				)}
 			>
 				{props.season.episodes.length > 0 ? (
-					<Button
-						size="xs"
-						color="blue"
-						variant={isSeen ? "default" : "outline"}
-						onClick={() => {
-							initializeMetadataToUpdate({
-								metadataId: props.metadataId,
-								showSeasonNumber: props.season.seasonNumber,
-								showEpisodeNumber: props.season.episodes.at(-1)?.episodeNumber,
-							});
-						}}
-					>
-						{isSeen ? "Watch again" : "Mark as seen"}
-					</Button>
+					<Group gap="xs">
+						<Button
+							size="xs"
+							color="blue"
+							variant={isSeen ? "default" : "outline"}
+							onClick={() => {
+								initializeMetadataToUpdate({
+									metadataId: props.metadataId,
+									showSeasonNumber: props.season.seasonNumber,
+									showEpisodeNumber: props.season.episodes.at(-1)?.episodeNumber,
+								});
+							}}
+						>
+							{isSeen ? "Watch again" : "Mark as seen"}
+						</Button>
+						{isSeen ? (
+							<Button
+								size="xs"
+								color="blue"
+								variant="outline"
+								loading={deployBulkMetadataProgressUpdate.isPending}
+								onClick={() => {
+									const updates: MetadataProgressUpdateInput[] =
+										props.season.episodes.map((episode) => ({
+											metadataId: props.metadataId,
+											change: {
+												createNewCompleted: {
+													withoutDates: {
+														showSeasonNumber: props.season.seasonNumber,
+														showEpisodeNumber: episode.episodeNumber,
+													},
+												},
+											},
+										}));
+									deployBulkMetadataProgressUpdate.mutate(updates);
+								}}
+							>
+								Rewatched
+							</Button>
+						) : null}
+					</Group>
 				) : null}
 			</DisplaySeasonOrEpisodeDetails>
 		</Box>

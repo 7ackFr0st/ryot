@@ -335,10 +335,19 @@ const ActivitySection = () => {
 		return data;
 	});
 	const series = pickBy(trackSeries);
+	const totalMovieDuration = sum(
+		dailyUserActivities?.items.map((i) => i.totalMovieDuration) || [],
+	);
+	const totalShowDuration = sum(
+		dailyUserActivities?.items.map((i) => i.totalShowDuration) || [],
+	);
+
 	const dailyUserActivitiesData = dailyUserActivities
 		? {
 				data,
 				series,
+				totalMovieDuration,
+				totalShowDuration,
 				groupedBy: dailyUserActivities.groupedBy,
 				totalCount: dailyUserActivities.totalCount,
 				totalDuration: dailyUserActivities.totalDuration,
@@ -347,10 +356,16 @@ const ActivitySection = () => {
 
 	const items = dailyUserActivitiesData?.totalCount || 0;
 
+	const displayDuration = (duration: number) =>
+		humanizeDuration(
+			dayjsLib.duration(duration, "minutes").asMilliseconds(),
+			{ largest: 2 },
+		);
+
 	return (
 		<Paper p={items === 0 ? "md" : undefined} withBorder={items === 0}>
 			<Stack h={{ base: 500, md: 400 }}>
-				<SimpleGrid cols={{ base: 2, md: 3 }} mx={{ md: "xl" }}>
+				<SimpleGrid cols={{ base: 2, md: 5 }} mx={{ md: "xl" }}>
 					<DisplayStat
 						label="Total"
 						value={`${formatQuantityWithCompactNotation(Number(items))} items`}
@@ -359,15 +374,23 @@ const ActivitySection = () => {
 						label="Duration"
 						value={
 							dailyUserActivitiesData
-								? humanizeDuration(
-										dayjsLib
-											.duration(
-												dailyUserActivitiesData.totalDuration,
-												"minutes",
-											)
-											.asMilliseconds(),
-										{ largest: 2 },
-									)
+								? displayDuration(dailyUserActivitiesData.totalDuration)
+								: "N/A"
+						}
+					/>
+					<DisplayStat
+						label="Movies watch time"
+						value={
+							dailyUserActivitiesData
+								? displayDuration(dailyUserActivitiesData.totalMovieDuration)
+								: "N/A"
+						}
+					/>
+					<DisplayStat
+						label="Shows watch time"
+						value={
+							dailyUserActivitiesData
+								? displayDuration(dailyUserActivitiesData.totalShowDuration)
 								: "N/A"
 						}
 					/>
