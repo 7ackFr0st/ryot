@@ -52,6 +52,15 @@ comic_books:
 
 # The database related settings.
 database:
+  # The maximum number of connections to keep open in the database pool,
+  # shared between HTTP request handlers and background job workers.
+  # @env DATABASE_MAX_CONNECTIONS
+  max_connections: 20
+
+  # The minimum number of connections to keep open in the database pool.
+  # @env DATABASE_MIN_CONNECTIONS
+  min_connections: 2
+
   # The Postgres database connection string.
   # Format described in https://www.sea-ql.org/SeaORM/docs/install-and-config/connection/#postgres.
   # @env DATABASE_URL

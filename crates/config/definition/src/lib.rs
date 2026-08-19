@@ -146,6 +146,13 @@ pub struct DatabaseConfig {
     #[setting(validate = not_empty)]
     #[mask]
     pub url: String,
+    /// The maximum number of connections to keep open in the database pool,
+    /// shared between HTTP request handlers and background job workers.
+    #[setting(default = 20)]
+    pub max_connections: u32,
+    /// The minimum number of connections to keep open in the database pool.
+    #[setting(default = 2)]
+    pub min_connections: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Config, PartialEq, Eq, MaskedConfig)]

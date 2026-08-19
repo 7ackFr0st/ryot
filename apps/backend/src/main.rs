@@ -22,7 +22,7 @@ use env_utils::APP_VERSION;
 use futures::{StreamExt, channel::mpsc::unbounded, lock::Mutex as FuturesMutex};
 use migrations_sql::Migrator;
 use schematic::schema::{SchemaGenerator, TypeScriptRenderer, YamlTemplateRenderer};
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::MigratorTrait;
 use supporting_service::JobStorage;
 #[cfg(all(not(target_env = "msvc"), target_arch = "x86_64"))]
@@ -101,7 +101,12 @@ async fn main() -> Result<()> {
         .join("config.json");
     fs::write(config_dump_path, serde_json::to_string_pretty(&config)?)?;
 
-    let db = Database::connect(config.database.url.clone())
+    let mut db_connect_options = ConnectOptions::new(config.database.url.clone());
+    db_connect_options
+        .max_connections(config.database.max_connections)
+        .min_connections(config.database.min_connections);
+
+    let db = Database::connect(db_connect_options)
         .await
         .expect("Database connection failed");
 
