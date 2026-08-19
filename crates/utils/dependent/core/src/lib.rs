@@ -171,7 +171,6 @@ async fn build_provider_specifics(
 }
 
 async fn get_is_server_key_validated(ss: &Arc<SupportingService>) -> Result<bool> {
-   
     Ok(true)
 }
 
