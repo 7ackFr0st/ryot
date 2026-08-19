@@ -1,6 +1,7 @@
 use async_graphql::{Context, Object, Result};
 use common_models::PresignedPutUrlResponse;
 use file_storage_service::{delete_object, get_presigned_put_url, get_presigned_url};
+use futures::future::try_join_all;
 use traits::GraphqlDependencyInjector;
 
 #[derive(Default)]
@@ -14,6 +15,17 @@ impl FileStorageQueryResolver {
     async fn get_presigned_s3_url(&self, gql_ctx: &Context<'_>, key: String) -> Result<String> {
         let service = self.dependency(gql_ctx);
         Ok(get_presigned_url(service, key).await?)
+    }
+
+    /// Get presigned URLs (valid for 90 minutes) for the given keys, in one round-trip.
+    async fn get_presigned_s3_urls(
+        &self,
+        gql_ctx: &Context<'_>,
+        keys: Vec<String>,
+    ) -> Result<Vec<String>> {
+        let service = self.dependency(gql_ctx);
+        let urls = try_join_all(keys.into_iter().map(|key| get_presigned_url(service, key)));
+        Ok(urls.await?)
     }
 }
 

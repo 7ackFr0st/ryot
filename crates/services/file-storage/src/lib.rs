@@ -53,7 +53,7 @@ pub async fn get_presigned_url(ss: &Arc<SupportingService>, key: String) -> Resu
         .bucket(bucket_name)
         .key(key)
         .presigned(PresigningConfig::expires_in(
-            Duration::minutes(2).to_std()?,
+            Duration::minutes(90).to_std()?,
         )?)
         .await?
         .uri()

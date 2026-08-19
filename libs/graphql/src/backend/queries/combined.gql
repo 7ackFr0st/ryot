@@ -17,6 +17,10 @@ query GetPresignedS3Url($key: String!) {
 	getPresignedS3Url(key: $key)
 }
 
+query GetPresignedS3Urls($keys: [String!]!) {
+	getPresignedS3Urls(keys: $keys)
+}
+
 query UserExports {
 	userExports {
 		url

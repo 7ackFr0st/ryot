@@ -10,7 +10,7 @@ import {
 	EntityLot,
 	type EntityTranslationVariant,
 	ExpireCacheKeyDocument,
-	GetPresignedS3UrlDocument,
+	GetPresignedS3UrlsDocument,
 	type MediaLot,
 	MediaSource,
 	type MetadataProgressUpdateInput,
@@ -684,14 +684,9 @@ export const useS3PresignedUrls = (keys: string[] | undefined) => {
 		queryKey: queryFactory.miscellaneous.presignedS3Urls(keys).queryKey,
 		queryFn: async () => {
 			if (!keys) return [];
-			const results = await Promise.all(
-				keys.map((key) =>
-					clientGqlService
-						.request(GetPresignedS3UrlDocument, { key })
-						.then((v) => v.getPresignedS3Url),
-				),
-			);
-			return results;
+			return clientGqlService
+				.request(GetPresignedS3UrlsDocument, { keys })
+				.then((v) => v.getPresignedS3Urls);
 		},
 	});
 };
