@@ -1,4 +1,9 @@
-use std::{collections::HashMap, future::Future, sync::Arc};
+use std::{
+    collections::HashMap,
+    future::Future,
+    sync::{Arc, LazyLock},
+    time::Duration as StdDuration,
+};
 
 use anyhow::Result;
 use async_graphql::OutputType;
@@ -6,16 +11,56 @@ use chrono::{Duration, Utc};
 use common_utils::ryot_log;
 use database_models::{application_cache, prelude::ApplicationCache};
 use dependent_models::{
-    ApplicationCacheKey, ApplicationCacheValue, CachedResponse, ExpireCacheKeyInput,
-    GetCacheKeyResponse,
+    ApplicationCacheKey, ApplicationCacheKeyDiscriminants, ApplicationCacheValue,
+    CachedResponse, ExpireCacheKeyInput, GetCacheKeyResponse,
 };
 use itertools::Itertools;
+use moka::future::Cache;
 use sea_orm::{
-    ActiveValue, ColumnTrait, EntityTrait, QueryFilter, QuerySelect, sea_query::OnConflict,
+    ActiveValue, ColumnTrait, EntityTrait, QueryFilter, QuerySelect, prelude::DateTimeUtc,
+    sea_query::OnConflict,
 };
 use serde::de::DeserializeOwned;
 use supporting_service::SupportingService;
 use uuid::Uuid;
+
+// In-process speed cache in front of the `application_cache` Postgres table.
+// Postgres stays the source of truth (persists across restarts, backs
+// pattern-based invalidation); this only avoids a DB round-trip for keys
+// read repeatedly within their TTL. `time_to_live` here is just a memory
+// safety net, not the real expiry - `CachedEntry::expires_at` (mirroring the
+// row's `expires_at`) is what actually governs freshness, checked on read.
+#[derive(Clone)]
+struct CachedEntry {
+    id: Uuid,
+    value: ApplicationCacheValue,
+    expires_at: DateTimeUtc,
+}
+
+static IN_MEMORY_CACHE: LazyLock<Cache<ApplicationCacheKey, CachedEntry>> = LazyLock::new(|| {
+    Cache::builder()
+        .max_capacity(10_000)
+        .time_to_live(StdDuration::from_secs(60 * 60 * 24))
+        .support_invalidation_closures()
+        .build()
+});
+
+// Shared with `set_keys_with_custom_expiry`'s `sanitized_key` computation so
+// the two never drift. Note: only works for `ApplicationCacheKey` variants
+// wrapping a `UserLevelCacheKey<T>`-shaped struct (has a `user_id` field) -
+// variants like `UserSession(String)`/`UserPasswordChangeSession(String)`,
+// where the user id IS the payload rather than a field on it, are not
+// matched here. This mirrors a pre-existing gap in the Postgres-only
+// `ByUser` invalidation this replaces, not a new limitation.
+fn extract_user_id(key: &ApplicationCacheKey) -> Option<String> {
+    let key_value = serde_json::to_value(key).unwrap();
+    key_value
+        .as_object()
+        .and_then(|obj| obj.values().next())
+        .and_then(|variant_obj| variant_obj.get("user_id"))
+        .and_then(|id| id.as_str())
+        .map(|s| s.to_owned())
+}
 
 fn get_expiry_for_key(ss: &Arc<SupportingService>, key: &ApplicationCacheKey) -> Duration {
     match key {
@@ -109,11 +154,7 @@ async fn set_keys_with_custom_expiry(
         let version = should_respect_version(&key).then(|| ss.server_start_time.to_string());
         let key_value = serde_json::to_value(&key).unwrap();
 
-        let user_id = key_value
-            .as_object()
-            .and_then(|obj| obj.values().next())
-            .and_then(|variant_obj| variant_obj.get("user_id"))
-            .and_then(|id| id.as_str())
+        let user_id = extract_user_id(&key)
             .map(|s| format!("-{s}"))
             .unwrap_or_default();
 
@@ -148,6 +189,14 @@ async fn set_keys_with_custom_expiry(
             .exec(&ss.db)
             .await?;
         let insert_id = inserted.last_insert_id;
+
+        IN_MEMORY_CACHE
+            .insert(
+                key.clone(),
+                CachedEntry { id: insert_id, value, expires_at },
+            )
+            .await;
+
         response.insert(key, insert_id);
     }
     ryot_log!(debug, "Inserted application caches: {response:?}");
@@ -187,7 +236,30 @@ pub async fn get_values(
     ss: &Arc<SupportingService>,
     keys: Vec<ApplicationCacheKey>,
 ) -> Result<HashMap<ApplicationCacheKey, GetCacheKeyResponse>> {
-    let string_keys = keys
+    let now = Utc::now();
+    let mut values = HashMap::new();
+    let mut missing_keys = vec![];
+
+    for key in keys {
+        match IN_MEMORY_CACHE.get(&key).await {
+            Some(entry) if entry.expires_at > now => {
+                values.insert(
+                    key,
+                    GetCacheKeyResponse {
+                        id: entry.id,
+                        value: entry.value,
+                    },
+                );
+            }
+            _ => missing_keys.push(key),
+        }
+    }
+
+    if missing_keys.is_empty() {
+        return Ok(values);
+    }
+
+    let string_keys = missing_keys
         .iter()
         .map(|k| serde_json::to_string(k).unwrap())
         .collect_vec();
@@ -197,27 +269,35 @@ pub async fn get_values(
             application_cache::Column::Id,
             application_cache::Column::Key,
             application_cache::Column::Value,
+            application_cache::Column::ExpiresAt,
         ])
         .filter(application_cache::Column::Key.is_in(string_keys))
-        .filter(application_cache::Column::ExpiresAt.gt(Utc::now()))
+        .filter(application_cache::Column::ExpiresAt.gt(now))
         .filter(
             application_cache::Column::Version
                 .is_null()
                 .or(application_cache::Column::Version.eq(ss.server_start_time.to_string())),
         )
-        .into_tuple::<(Uuid, String, serde_json::Value)>()
+        .into_tuple::<(Uuid, String, serde_json::Value, DateTimeUtc)>()
         .all(&ss.db)
         .await?;
 
-    let mut values = HashMap::new();
-    for (id, key, value) in caches {
-        values.insert(
-            serde_json::from_str(&key).unwrap(),
-            GetCacheKeyResponse {
-                id,
-                value: serde_json::from_value(value)?,
-            },
-        );
+    for (id, key_string, value_json, expires_at) in caches {
+        let key: ApplicationCacheKey = serde_json::from_str(&key_string).unwrap();
+        let value: ApplicationCacheValue = serde_json::from_value(value_json)?;
+
+        IN_MEMORY_CACHE
+            .insert(
+                key.clone(),
+                CachedEntry {
+                    id,
+                    value: value.clone(),
+                    expires_at,
+                },
+            )
+            .await;
+
+        values.insert(key, GetCacheKeyResponse { id, value });
     }
     Ok(values)
 }
@@ -280,6 +360,30 @@ pub async fn expire_key(ss: &Arc<SupportingService>, by: ExpireCacheKeyInput) ->
         })
         .exec(&ss.db)
         .await?;
+
+    match by.clone() {
+        ExpireCacheKeyInput::ByKey(key) => {
+            IN_MEMORY_CACHE.invalidate(key.as_ref()).await;
+        }
+        ExpireCacheKeyInput::ById(id) => {
+            let _ = IN_MEMORY_CACHE.invalidate_entries_if(move |_, entry| entry.id == id);
+        }
+        ExpireCacheKeyInput::ByUser(user_id) => {
+            let _ = IN_MEMORY_CACHE.invalidate_entries_if(move |key, _| {
+                extract_user_id(key).as_deref() == Some(user_id.as_str())
+            });
+        }
+        ExpireCacheKeyInput::BySanitizedKey { key: discriminant, user_id } => {
+            let _ = IN_MEMORY_CACHE.invalidate_entries_if(move |key, _| {
+                ApplicationCacheKeyDiscriminants::from(key) == discriminant
+                    && user_id
+                        .as_ref()
+                        .map(|uid| extract_user_id(key).as_deref() == Some(uid.as_str()))
+                        .unwrap_or(true)
+            });
+        }
+    }
+
     ryot_log!(debug, "Expired cache: {by:?}, response: {expired:?}");
     Ok(())
 }
