@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { CreateBucketCommand, S3Client } from "@aws-sdk/client-s3";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
@@ -33,7 +34,13 @@ export interface StartedServices {
 	pgContainer: StartedPostgreSqlContainer;
 }
 
-const MONOREPO_ROOT = path.resolve(__dirname, "../../../");
+// `__dirname` is a CommonJS global that vitest's vite-node runtime polyfills
+// but Playwright's native ESM TypeScript runtime does not, so this is
+// derived from `import.meta.url` instead to work under both test runners.
+const MONOREPO_ROOT = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"../../../",
+);
 const MINIO_ACCESS_KEY = "minio-admin";
 const MINIO_SECRET_KEY = "minio-admin";
 const TEST_BUCKET_NAME = "test-bucket";
@@ -89,6 +96,10 @@ async function startFrontendProcess(
 				stdio: ["ignore", "pipe", "pipe"],
 				cwd: path.join(MONOREPO_ROOT, "apps/frontend"),
 				env: { ...process.env, PORT: frontendPort.toString() },
+				// On Windows, `yarn` resolves to a `.cmd` shim rather than a directly
+				// executable file, which `child_process.spawn` cannot launch without
+				// going through a shell (it fails with `ENOENT` otherwise).
+				shell: process.platform === "win32",
 			},
 		);
 
