@@ -5,17 +5,24 @@ import {
 	Container,
 	Group,
 	Paper,
+	Progress,
 	SimpleGrid,
 	Stack,
 	Text,
 	Title,
 	useMantineTheme,
 } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
+	AutoReidentifyMetadataViaTmdbDocument,
 	BackgroundJob,
 	DeployBackgroundJobDocument,
 	GenerateLogDownloadUrlDocument,
+	MediaSource,
+	PartialMetadataListDocument,
+	type PartialMetadataListItem,
+	ReidentifyMetadataDocument,
 	UserLot,
 } from "@ryot/generated/graphql/backend/graphql";
 import { processSubmission } from "@ryot/ts-utils";
@@ -28,13 +35,16 @@ import {
 	IconPlayerPlay,
 	IconRefresh,
 	IconRocket,
+	IconSearch,
 } from "@tabler/icons-react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import { useState } from "react";
 import { data, Form, useNavigate } from "react-router";
 import { ClientOnly } from "remix-utils/client-only";
 import { match } from "ts-pattern";
 import { z } from "zod";
+import { ReidentifyMetadataModal } from "~/components/media/reidentify-metadata-modal";
 import {
 	useConfirmSubmit,
 	useDashboardLayoutData,
@@ -90,6 +100,7 @@ export default function Page() {
 						<DisplayJobBtn key={job} job={job} />
 					))}
 					<DownloadLogsButton />
+					<PartialMetadataCard />
 					<ClientOnly>
 						{() =>
 							isOnboardingTourCompleted && !isMobile ? (
@@ -303,5 +314,188 @@ const DownloadLogsButton = () => {
 				onClick: () => downloadLogsMutation.mutate(),
 			}}
 		/>
+	);
+};
+
+const RETRY_CONCURRENCY = 1;
+
+const PartialMetadataCard = () => {
+	const theme = useMantineTheme();
+	const [wizardIndex, setWizardIndex] = useState(0);
+	const [wizardOpened, { open: openWizard, close: closeWizard }] =
+		useDisclosure(false);
+	const [wizardItems, setWizardItems] = useState<PartialMetadataListItem[]>(
+		[],
+	);
+	const [retryProgress, setRetryProgress] = useState<{
+		done: number;
+		total: number;
+	} | null>(null);
+
+	const partialList = useQuery({
+		queryKey: ["partialMetadataList"],
+		queryFn: () =>
+			clientGqlService
+				.request(PartialMetadataListDocument)
+				.then((d) => d.partialMetadataList),
+	});
+
+	const items = partialList.data || [];
+
+	const retryAll = async () => {
+		const queue = [...items];
+		const total = queue.length;
+		let done = 0;
+		setRetryProgress({ done: 0, total });
+
+		const worker = async () => {
+			while (queue.length > 0) {
+				const item = queue.shift();
+				if (!item) break;
+				try {
+					const plainRetry = await clientGqlService.request(
+						ReidentifyMetadataDocument,
+						{
+							newLot: item.lot,
+							metadataId: item.id,
+							newSource: item.source,
+							newIdentifier: item.identifier,
+						},
+					);
+					if (
+						!plainRetry.reidentifyMetadata &&
+						item.source === MediaSource.Tvdb
+					) {
+						await clientGqlService.request(
+							AutoReidentifyMetadataViaTmdbDocument,
+							{ metadataId: item.id },
+						);
+					}
+				} catch {
+					// Left as partial, will still show up in the refetched list below.
+				}
+				done += 1;
+				setRetryProgress({ done, total });
+			}
+		};
+
+		await Promise.all(
+			Array.from({ length: RETRY_CONCURRENCY }, () => worker()),
+		);
+		await partialList.refetch();
+		setRetryProgress(null);
+	};
+
+	const startWizard = () => {
+		setWizardItems(items);
+		setWizardIndex(0);
+		openWizard();
+	};
+
+	const goToNext = () => {
+		if (wizardIndex + 1 >= wizardItems.length) closeWizard();
+		else setWizardIndex((i) => i + 1);
+	};
+
+	const currentWizardItem = wizardItems[wizardIndex];
+	const retryPercent = retryProgress
+		? Math.round((retryProgress.done / retryProgress.total) * 100)
+		: 0;
+
+	return (
+		<>
+			{currentWizardItem ? (
+				<ReidentifyMetadataModal
+					keepOpenOnSuccess
+					opened={wizardOpened}
+					onClose={closeWizard}
+					key={currentWizardItem.id}
+					metadataId={currentWizardItem.id}
+					currentLot={currentWizardItem.lot}
+					displayTitle={currentWizardItem.title}
+					currentSource={currentWizardItem.source}
+					currentIdentifier={currentWizardItem.identifier}
+					onIdentified={() => {
+						partialList.refetch();
+						goToNext();
+					}}
+					headerExtra={
+						<Group justify="space-between" mb="sm">
+							<Text size="sm" c="dimmed">
+								{wizardIndex + 1} of {wizardItems.length} remaining
+							</Text>
+							<Group gap="xs">
+								<Button size="xs" variant="subtle" onClick={goToNext}>
+									Skip
+								</Button>
+								<Button
+									size="xs"
+									color="red"
+									variant="subtle"
+									onClick={closeWizard}
+								>
+									Stop
+								</Button>
+							</Group>
+						</Group>
+					}
+				/>
+			) : null}
+			<Paper
+				withBorder
+				radius="md"
+				p={{ base: "sm", md: "lg" }}
+				style={{ height: "100%", display: "flex", flexDirection: "column" }}
+			>
+				<Stack gap="md" style={{ flex: 1 }}>
+					<Group gap="md" wrap="nowrap">
+						<ActionIcon
+							size={56}
+							radius="md"
+							variant="light"
+							style={{ flexShrink: 0 }}
+							color={theme.primaryColor}
+						>
+							<IconSearch size={28} />
+						</ActionIcon>
+						<Box style={{ flex: 1, minWidth: 0 }}>
+							<Title order={4} lineClamp={2}>
+								Unidentified media
+							</Title>
+						</Box>
+					</Group>
+					<Text size="sm" c="dimmed" style={{ flex: 1 }}>
+						{items.length} item{items.length === 1 ? "" : "s"} could not be
+						identified (showing as a raw import number instead of a title).
+						Retry automatically, or identify what's left one by one.
+					</Text>
+					{retryProgress ? (
+						<Stack gap={4}>
+							<Progress value={retryPercent} animated />
+							<Text size="xs" c="dimmed" ta="center">
+								{retryProgress.done} / {retryProgress.total} ({retryPercent}%)
+							</Text>
+						</Stack>
+					) : null}
+					<Group grow>
+						<Button
+							variant="light"
+							onClick={retryAll}
+							loading={!!retryProgress}
+							disabled={items.length === 0}
+						>
+							Retry all ({items.length})
+						</Button>
+						<Button
+							variant="light"
+							onClick={startWizard}
+							disabled={items.length === 0 || !!retryProgress}
+						>
+							Identify manually
+						</Button>
+					</Group>
+				</Stack>
+			</Paper>
+		</>
 	);
 };

@@ -1707,6 +1707,12 @@ export type MusicSpecificsInput = {
 };
 
 export type MutationRoot = {
+  /**
+   * For a partial item sourced from TVDB, try resolving it to TMDB instead
+   * (more complete catalog) via TMDB's external-id lookup. Returns `true`
+   * only if a match was found and applied.
+   */
+  autoReidentifyMetadataViaTmdb: Scalars['Boolean']['output'];
   /** Complete two-factor authentication setup by verifying the TOTP code. */
   completeTwoFactorSetup: UserTwoFactorBackupCodesResponse;
   /** Create or edit an access link. */
@@ -1823,6 +1829,12 @@ export type MutationRoot = {
   processAccessLink: ProcessAccessLinkResult;
   /** Regenerate backup codes for the currently logged in user. */
   regenerateTwoFactorBackupCodes: UserTwoFactorBackupCodesResponse;
+  /**
+   * Re-point a metadata item (typically partial/mis-identified) to a different
+   * provider identifier, fetch the correct details, and migrate this user's
+   * history/reviews/collections over to it.
+   */
+  reidentifyMetadata: Scalars['Boolean']['output'];
   /**
    * Create a new user for the service. Also set their `lot` as admin if
    * they are the first user.
@@ -2038,6 +2050,11 @@ export type MutationRootDeployUpdateMediaTranslationsJobArgs = {
 };
 
 
+export type MutationRootAutoReidentifyMetadataViaTmdbArgs = {
+  metadataId: Scalars['String']['input'];
+};
+
+
 export type MutationRootDisassociateMetadataArgs = {
   metadataId: Scalars['String']['input'];
 };
@@ -2077,6 +2094,14 @@ export type MutationRootMergeExerciseArgs = {
 export type MutationRootMergeMetadataArgs = {
   mergeFrom: Scalars['String']['input'];
   mergeInto: Scalars['String']['input'];
+};
+
+
+export type MutationRootReidentifyMetadataArgs = {
+  metadataId: Scalars['String']['input'];
+  newIdentifier: Scalars['String']['input'];
+  newLot: MediaLot;
+  newSource: MediaSource;
 };
 
 
@@ -2203,6 +2228,15 @@ export type OidcTokenOutput = {
 export type OidcUserInput = {
   email: Scalars['String']['input'];
   issuerId: Scalars['String']['input'];
+};
+
+/** A metadata item that is still partial (title unknown/unresolved) for a user. */
+export type PartialMetadataListItem = {
+  id: Scalars['String']['output'];
+  identifier: Scalars['String']['output'];
+  lot: MediaLot;
+  source: MediaSource;
+  title: Scalars['String']['output'];
 };
 
 export type PasswordUserInput = {
@@ -2393,6 +2427,8 @@ export type QueryRoot = {
   metadataLookup: CachedMetadataLookupResponse;
   /** Search for a list of media for a given type. */
   metadataSearch: CachedSearchIdResponse;
+  /** List metadata associated with the user that is still partial (unresolved). */
+  partialMetadataList: Array<PartialMetadataListItem>;
   /** Search for a list of people from a given source. */
   peopleSearch: CachedSearchIdResponse;
   /** Get details about a creator present in the database. */
@@ -4054,6 +4090,23 @@ export type DisassociateMetadataMutationVariables = Exact<{
 
 export type DisassociateMetadataMutation = { disassociateMetadata: boolean };
 
+export type ReidentifyMetadataMutationVariables = Exact<{
+  metadataId: Scalars['String']['input'];
+  newLot: MediaLot;
+  newSource: MediaSource;
+  newIdentifier: Scalars['String']['input'];
+}>;
+
+
+export type ReidentifyMetadataMutation = { reidentifyMetadata: boolean };
+
+export type AutoReidentifyMetadataViaTmdbMutationVariables = Exact<{
+  metadataId: Scalars['String']['input'];
+}>;
+
+
+export type AutoReidentifyMetadataViaTmdbMutation = { autoReidentifyMetadataViaTmdb: boolean };
+
 export type CreateOrUpdateReviewMutationVariables = Exact<{
   input: CreateOrUpdateReviewInput;
 }>;
@@ -4265,6 +4318,11 @@ export type GetPresignedS3UrlsQueryVariables = Exact<{
 
 
 export type GetPresignedS3UrlsQuery = { getPresignedS3Urls: Array<string> };
+
+export type PartialMetadataListQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type PartialMetadataListQuery = { partialMetadataList: Array<{ id: string, title: string, lot: MediaLot, source: MediaSource, identifier: string }> };
 
 export type UserExportsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -4663,6 +4721,8 @@ export const UpdateUserWorkoutAttributesDocument = {"kind":"Document","definitio
 export const GenerateAuthTokenDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"GenerateAuthToken"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"generateAuthToken"}}]}}]} as unknown as DocumentNode<GenerateAuthTokenMutation, GenerateAuthTokenMutationVariables>;
 export const MergeMetadataDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"MergeMetadata"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"mergeFrom"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"mergeInto"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"mergeMetadata"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"mergeFrom"},"value":{"kind":"Variable","name":{"kind":"Name","value":"mergeFrom"}}},{"kind":"Argument","name":{"kind":"Name","value":"mergeInto"},"value":{"kind":"Variable","name":{"kind":"Name","value":"mergeInto"}}}]}]}}]} as unknown as DocumentNode<MergeMetadataMutation, MergeMetadataMutationVariables>;
 export const DisassociateMetadataDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DisassociateMetadata"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"metadataId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"disassociateMetadata"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"metadataId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"metadataId"}}}]}]}}]} as unknown as DocumentNode<DisassociateMetadataMutation, DisassociateMetadataMutationVariables>;
+export const ReidentifyMetadataDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"ReidentifyMetadata"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"metadataId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"newLot"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"MediaLot"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"newSource"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"MediaSource"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"newIdentifier"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"reidentifyMetadata"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"metadataId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"metadataId"}}},{"kind":"Argument","name":{"kind":"Name","value":"newLot"},"value":{"kind":"Variable","name":{"kind":"Name","value":"newLot"}}},{"kind":"Argument","name":{"kind":"Name","value":"newSource"},"value":{"kind":"Variable","name":{"kind":"Name","value":"newSource"}}},{"kind":"Argument","name":{"kind":"Name","value":"newIdentifier"},"value":{"kind":"Variable","name":{"kind":"Name","value":"newIdentifier"}}}]}]}}]} as unknown as DocumentNode<ReidentifyMetadataMutation, ReidentifyMetadataMutationVariables>;
+export const AutoReidentifyMetadataViaTmdbDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"AutoReidentifyMetadataViaTmdb"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"metadataId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"autoReidentifyMetadataViaTmdb"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"metadataId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"metadataId"}}}]}]}}]} as unknown as DocumentNode<AutoReidentifyMetadataViaTmdbMutation, AutoReidentifyMetadataViaTmdbMutationVariables>;
 export const CreateOrUpdateReviewDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreateOrUpdateReview"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreateOrUpdateReviewInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createOrUpdateReview"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}}]}}]}}]} as unknown as DocumentNode<CreateOrUpdateReviewMutation, CreateOrUpdateReviewMutationVariables>;
 export const PresignedPutS3UrlDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"PresignedPutS3Url"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"prefix"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"presignedPutS3Url"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"prefix"},"value":{"kind":"Variable","name":{"kind":"Name","value":"prefix"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"uploadUrl"}}]}}]}}]} as unknown as DocumentNode<PresignedPutS3UrlMutation, PresignedPutS3UrlMutationVariables>;
 export const DeployRemoveEntitiesFromCollectionJobDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DeployRemoveEntitiesFromCollectionJob"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ChangeCollectionToEntitiesInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"deployRemoveEntitiesFromCollectionJob"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}]}]}}]} as unknown as DocumentNode<DeployRemoveEntitiesFromCollectionJobMutation, DeployRemoveEntitiesFromCollectionJobMutationVariables>;
@@ -4694,6 +4754,7 @@ export const UserByOidcIssuerIdDocument = {"kind":"Document","definitions":[{"ki
 export const GetOidcTokenDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GetOidcToken"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"code"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"getOidcToken"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"code"},"value":{"kind":"Variable","name":{"kind":"Name","value":"code"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"subject"}}]}}]}}]} as unknown as DocumentNode<GetOidcTokenQuery, GetOidcTokenQueryVariables>;
 export const GetPresignedS3UrlDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GetPresignedS3Url"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"key"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"getPresignedS3Url"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"key"},"value":{"kind":"Variable","name":{"kind":"Name","value":"key"}}}]}]}}]} as unknown as DocumentNode<GetPresignedS3UrlQuery, GetPresignedS3UrlQueryVariables>;
 export const GetPresignedS3UrlsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GetPresignedS3Urls"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"keys"}},"type":{"kind":"NonNullType","type":{"kind":"ListType","type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"getPresignedS3Urls"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"keys"},"value":{"kind":"Variable","name":{"kind":"Name","value":"keys"}}}]}]}}]} as unknown as DocumentNode<GetPresignedS3UrlsQuery, GetPresignedS3UrlsQueryVariables>;
+export const PartialMetadataListDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PartialMetadataList"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"partialMetadataList"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"title"}},{"kind":"Field","name":{"kind":"Name","value":"lot"}},{"kind":"Field","name":{"kind":"Name","value":"source"}},{"kind":"Field","name":{"kind":"Name","value":"identifier"}}]}}]}}]} as unknown as DocumentNode<PartialMetadataListQuery, PartialMetadataListQueryVariables>;
 export const UserExportsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"UserExports"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"userExports"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"url"}},{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"size"}},{"kind":"Field","name":{"kind":"Name","value":"endedAt"}},{"kind":"Field","name":{"kind":"Name","value":"startedAt"}}]}}]}}]} as unknown as DocumentNode<UserExportsQuery, UserExportsQueryVariables>;
 export const UserCollectionsListDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"UserCollectionsList"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"userCollectionsList"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"cacheId"}},{"kind":"Field","name":{"kind":"Name","value":"response"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"count"}},{"kind":"Field","name":{"kind":"Name","value":"isDefault"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"creator"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}},{"kind":"Field","name":{"kind":"Name","value":"collaborators"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"extraInformation"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"isHidden"}}]}},{"kind":"Field","name":{"kind":"Name","value":"collaborator"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"informationTemplate"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"lot"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"possibleValues"}}]}}]}}]}}]}}]} as unknown as DocumentNode<UserCollectionsListQuery, UserCollectionsListQueryVariables>;
 export const UserIntegrationsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"UserIntegrations"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"userIntegrations"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"lot"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"provider"}},{"kind":"Field","name":{"kind":"Name","value":"createdOn"}},{"kind":"Field","name":{"kind":"Name","value":"isDisabled"}},{"kind":"Field","name":{"kind":"Name","value":"lastFinishedAt"}},{"kind":"Field","name":{"kind":"Name","value":"maximumProgress"}},{"kind":"Field","name":{"kind":"Name","value":"minimumProgress"}},{"kind":"Field","name":{"kind":"Name","value":"syncToOwnedCollection"}},{"kind":"Field","name":{"kind":"Name","value":"extraSettings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"disableOnContinuousErrors"}}]}},{"kind":"Field","name":{"kind":"Name","value":"triggerResult"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"error"}},{"kind":"Field","name":{"kind":"Name","value":"finishedAt"}}]}},{"kind":"Field","name":{"kind":"Name","value":"providerSpecifics"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"plexYankToken"}},{"kind":"Field","name":{"kind":"Name","value":"plexYankBaseUrl"}},{"kind":"Field","name":{"kind":"Name","value":"plexSinkUsername"}},{"kind":"Field","name":{"kind":"Name","value":"audiobookshelfToken"}},{"kind":"Field","name":{"kind":"Name","value":"audiobookshelfBaseUrl"}},{"kind":"Field","name":{"kind":"Name","value":"jellyfinSinkUsername"}},{"kind":"Field","name":{"kind":"Name","value":"komgaApiKey"}},{"kind":"Field","name":{"kind":"Name","value":"komgaBaseUrl"}},{"kind":"Field","name":{"kind":"Name","value":"radarrBaseUrl"}},{"kind":"Field","name":{"kind":"Name","value":"radarrApiKey"}},{"kind":"Field","name":{"kind":"Name","value":"radarrProfileId"}},{"kind":"Field","name":{"kind":"Name","value":"radarrRootFolderPath"}},{"kind":"Field","name":{"kind":"Name","value":"radarrSyncCollectionIds"}},{"kind":"Field","name":{"kind":"Name","value":"radarrTagIds"}},{"kind":"Field","name":{"kind":"Name","value":"sonarrProfileId"}},{"kind":"Field","name":{"kind":"Name","value":"sonarrApiKey"}},{"kind":"Field","name":{"kind":"Name","value":"sonarrBaseUrl"}},{"kind":"Field","name":{"kind":"Name","value":"sonarrRootFolderPath"}},{"kind":"Field","name":{"kind":"Name","value":"sonarrSyncCollectionIds"}},{"kind":"Field","name":{"kind":"Name","value":"sonarrTagIds"}},{"kind":"Field","name":{"kind":"Name","value":"jellyfinPushBaseUrl"}},{"kind":"Field","name":{"kind":"Name","value":"jellyfinPushUsername"}},{"kind":"Field","name":{"kind":"Name","value":"jellyfinPushPassword"}},{"kind":"Field","name":{"kind":"Name","value":"youtubeMusicTimezone"}},{"kind":"Field","name":{"kind":"Name","value":"youtubeMusicAuthCookie"}},{"kind":"Field","name":{"kind":"Name","value":"ryotBrowserExtensionDisabledSites"}}]}}]}}]}}]} as unknown as DocumentNode<UserIntegrationsQuery, UserIntegrationsQueryVariables>;

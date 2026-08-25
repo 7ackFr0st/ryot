@@ -20,7 +20,8 @@ use database_utils::entity_in_collections_with_collection_to_entity_ids;
 use dependent_collection_utils::{add_entities_to_collection, remove_entities_from_collection};
 use dependent_details_utils::metadata_details;
 use dependent_entity_utils::{
-    change_metadata_associations, insert_metadata_group_links, insert_metadata_person_links,
+    change_metadata_associations, commit_metadata, insert_metadata_group_links,
+    insert_metadata_person_links,
 };
 use dependent_notification_utils::send_notification_for_user;
 use dependent_seen_utils::is_metadata_finished_by_user;
@@ -32,8 +33,9 @@ use dependent_utility_utils::{
 use enum_models::{EntityLot, MediaLot, MediaSource, UserNotificationContent};
 use futures::try_join;
 use media_models::{
-    CreateCustomMetadataGroupInput, CreateCustomMetadataInput, UpdateCustomMetadataGroupInput,
-    UpdateCustomMetadataInput, UpdateCustomPersonInput,
+    CreateCustomMetadataGroupInput, CreateCustomMetadataInput, PartialMetadataListItem,
+    PartialMetadataWithoutId, UpdateCustomMetadataGroupInput, UpdateCustomMetadataInput,
+    UpdateCustomPersonInput,
 };
 use nanoid::nanoid;
 use sea_orm::{
@@ -134,6 +136,106 @@ pub async fn merge_metadata(
     txn.commit().await?;
     expire_user_metadata_list_cache(&user_id, ss).await?;
     Ok(true)
+}
+
+/// List metadata associated with the user that is still partial (never
+/// resolved to a real title, e.g. stuck as a raw import identifier).
+pub async fn partial_metadata_list(
+    ss: &Arc<SupportingService>,
+    user_id: &String,
+) -> Result<Vec<PartialMetadataListItem>> {
+    let user_metadata_ids = UserToEntity::find()
+        .select_only()
+        .column(user_to_entity::Column::MetadataId)
+        .filter(user_to_entity::Column::UserId.eq(user_id))
+        .filter(user_to_entity::Column::MetadataId.is_not_null())
+        .into_tuple::<String>()
+        .all(&ss.db)
+        .await?;
+    let items = Metadata::find()
+        .select_only()
+        .column(metadata::Column::Id)
+        .column(metadata::Column::Title)
+        .column(metadata::Column::Lot)
+        .column(metadata::Column::Source)
+        .column(metadata::Column::Identifier)
+        .filter(metadata::Column::Id.is_in(user_metadata_ids))
+        .filter(metadata::Column::IsPartial.eq(true))
+        .into_model::<PartialMetadataListItem>()
+        .all(&ss.db)
+        .await?;
+    Ok(items)
+}
+
+/// Re-point an existing (typically partial/mis-identified) metadata item to a
+/// different provider identifier, fetch the correct details for it, and move
+/// this user's history/reviews/collections over. Reuses `commit_metadata` (so
+/// an already-correct item elsewhere in the DB is reused instead of
+/// duplicated) and `merge_metadata` (so nothing needs to be re-entered).
+///
+/// Passing the item's own current `lot`/`source`/`identifier` back in is a
+/// valid "just retry" call: `commit_metadata` will resolve to the same row
+/// and re-run the provider fetch on it.
+///
+/// Returns whether the item ended up fully identified (not partial anymore).
+pub async fn reidentify_metadata(
+    ss: &Arc<SupportingService>,
+    user_id: String,
+    metadata_id: String,
+    new_lot: MediaLot,
+    new_source: MediaSource,
+    new_identifier: String,
+) -> Result<bool> {
+    let (new_metadata, was_updated_successfully) = commit_metadata(
+        PartialMetadataWithoutId {
+            lot: new_lot,
+            source: new_source,
+            identifier: new_identifier,
+            title: "Loading...".to_string(),
+            ..Default::default()
+        },
+        ss,
+        Some(true),
+    )
+    .await?;
+    if new_metadata.id != metadata_id {
+        merge_metadata(ss, user_id, metadata_id, new_metadata.id).await?;
+    }
+    Ok(was_updated_successfully)
+}
+
+/// For a partial item sourced from TVDB, try to resolve it to TMDB instead
+/// (TMDB's catalog is generally more complete) via TMDB's external-id lookup.
+/// Returns `true` if a TMDB match was found and applied, `false` if TVDB
+/// wasn't the source or TMDB has no matching entry (nothing to do).
+pub async fn auto_reidentify_metadata_via_tmdb(
+    ss: &Arc<SupportingService>,
+    user_id: String,
+    metadata_id: String,
+) -> Result<bool> {
+    let metadata = Metadata::find_by_id(&metadata_id)
+        .one(&ss.db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Metadata {metadata_id} not found"))?;
+    if metadata.source != MediaSource::Tvdb {
+        return Ok(false);
+    }
+    let tmdb_service = tmdb_provider::TmdbService::new(ss.clone()).await?;
+    let Some(tmdb_id) = tmdb_service
+        .find_by_external_id(&metadata.identifier, "tvdb_id", metadata.lot)
+        .await?
+    else {
+        return Ok(false);
+    };
+    reidentify_metadata(
+        ss,
+        user_id,
+        metadata_id,
+        metadata.lot,
+        MediaSource::Tmdb,
+        tmdb_id,
+    )
+    .await
 }
 
 pub async fn disassociate_metadata(

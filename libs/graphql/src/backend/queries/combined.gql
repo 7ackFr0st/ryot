@@ -21,6 +21,16 @@ query GetPresignedS3Urls($keys: [String!]!) {
 	getPresignedS3Urls(keys: $keys)
 }
 
+query PartialMetadataList {
+	partialMetadataList {
+		id
+		title
+		lot
+		source
+		identifier
+	}
+}
+
 query UserExports {
 	userExports {
 		url

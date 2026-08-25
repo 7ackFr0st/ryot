@@ -1,8 +1,11 @@
 import { Menu } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
 	type EntityLot,
 	MarkEntityAsPartialDocument,
+	type MediaLot,
+	type MediaSource,
 } from "@ryot/generated/graphql/backend/graphql";
 import { IconSearch } from "@tabler/icons-react";
 import { useMutation } from "@tanstack/react-query";
@@ -16,6 +19,7 @@ import {
 	refreshEntityDetails,
 } from "~/lib/shared/react-query";
 import { openConfirmationModal } from "~/lib/shared/ui-utils";
+import { ReidentifyMetadataModal } from "./reidentify-metadata-modal";
 
 export const ToggleMediaMonitorMenuItem = (props: {
 	formValue: string;
@@ -107,5 +111,32 @@ export const MarkEntityAsPartialMenuItem = (props: {
 		>
 			Update details
 		</Menu.Item>
+	);
+};
+
+export const ReidentifyMetadataMenuItem = (props: {
+	metadataId: string;
+	metadataLot: MediaLot;
+	metadataSource: MediaSource;
+	metadataIdentifier: string;
+	title: string;
+}) => {
+	const [opened, { open, close }] = useDisclosure(false);
+
+	return (
+		<>
+			<ReidentifyMetadataModal
+				opened={opened}
+				onClose={close}
+				currentLot={props.metadataLot}
+				metadataId={props.metadataId}
+				displayTitle={props.title}
+				currentSource={props.metadataSource}
+				currentIdentifier={props.metadataIdentifier}
+			/>
+			<Menu.Item leftSection={<IconSearch size={14} />} onClick={open}>
+				Re-identify
+			</Menu.Item>
+		</>
 	);
 };

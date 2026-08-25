@@ -76,6 +76,33 @@ impl TmdbService {
         })
     }
 
+    /// Look up the TMDB id for an item known by an external identifier (eg:
+    /// a TVDB id), using TMDB's `/find` endpoint. Returns `None` if TMDB has
+    /// no matching entry for the given `lot`.
+    pub async fn find_by_external_id(
+        &self,
+        external_id: &str,
+        external_source: &str,
+        lot: MediaLot,
+    ) -> Result<Option<String>> {
+        let rsp = self
+            .client
+            .get(format!("{URL}/find/{external_id}"))
+            .query(&[
+                ("external_source", external_source),
+                ("language", &self.get_default_language()),
+            ])
+            .send()
+            .await?;
+        let data: crate::models::TmdbFindResponse = rsp.json().await?;
+        let result = match lot {
+            MediaLot::Movie => data.movie_results.into_iter().next(),
+            MediaLot::Show => data.tv_results.into_iter().next(),
+            _ => None,
+        };
+        Ok(result.map(|entry| entry.id.to_string()))
+    }
+
     pub async fn save_all_images(
         &self,
         media_type: &str,

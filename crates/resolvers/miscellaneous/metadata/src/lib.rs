@@ -3,7 +3,8 @@ use common_models::EntityWithLot;
 use dependent_models::{
     CachedResponse, UserMetadataDetails, UserMetadataListInput, UserMetadataListResponse,
 };
-use media_models::GraphqlMetadataDetails;
+use enum_models::{MediaLot, MediaSource};
+use media_models::{GraphqlMetadataDetails, PartialMetadataListItem};
 use traits::GraphqlDependencyInjector;
 
 #[derive(Default)]
@@ -47,6 +48,18 @@ impl MiscellaneousMetadataQueryResolver {
                 metadata_id,
             )
             .await?,
+        )
+    }
+
+    /// List metadata associated with the user that is still partial (unresolved).
+    async fn partial_metadata_list(
+        &self,
+        gql_ctx: &Context<'_>,
+    ) -> Result<Vec<PartialMetadataListItem>> {
+        let (service, user_id) = self.dependency_and_user(gql_ctx).await?;
+        Ok(
+            miscellaneous_metadata_operations_service::partial_metadata_list(service, &user_id)
+                .await?,
         )
     }
 
@@ -118,5 +131,49 @@ impl MiscellaneousMetadataMutationResolver {
     ) -> Result<bool> {
         let (service, _) = self.dependency_and_user(gql_ctx).await?;
         Ok(miscellaneous_general_service::mark_entity_as_partial(service, input).await?)
+    }
+
+    /// For a partial item sourced from TVDB, try resolving it to TMDB instead
+    /// (more complete catalog) via TMDB's external-id lookup. Returns `true`
+    /// only if a match was found and applied.
+    async fn auto_reidentify_metadata_via_tmdb(
+        &self,
+        gql_ctx: &Context<'_>,
+        metadata_id: String,
+    ) -> Result<bool> {
+        let (service, user_id) = self.dependency_and_user(gql_ctx).await?;
+        Ok(
+            miscellaneous_metadata_operations_service::auto_reidentify_metadata_via_tmdb(
+                service,
+                user_id,
+                metadata_id,
+            )
+            .await?,
+        )
+    }
+
+    /// Re-point a metadata item (typically partial/mis-identified) to a different
+    /// provider identifier, fetch the correct details, and migrate this user's
+    /// history/reviews/collections over to it.
+    async fn reidentify_metadata(
+        &self,
+        gql_ctx: &Context<'_>,
+        metadata_id: String,
+        new_lot: MediaLot,
+        new_source: MediaSource,
+        new_identifier: String,
+    ) -> Result<bool> {
+        let (service, user_id) = self.dependency_and_user(gql_ctx).await?;
+        Ok(
+            miscellaneous_metadata_operations_service::reidentify_metadata(
+                service,
+                user_id,
+                metadata_id,
+                new_lot,
+                new_source,
+                new_identifier,
+            )
+            .await?,
+        )
     }
 }

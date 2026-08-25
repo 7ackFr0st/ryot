@@ -2415,6 +2415,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cache-service",
+ "chrono",
  "common-models",
  "common-utils",
  "database-models",
@@ -4987,6 +4988,7 @@ dependencies = [
  "rust_decimal",
  "sea-orm",
  "supporting-service",
+ "tmdb-provider",
  "tracing",
 ]
 
@@ -4999,6 +5001,7 @@ dependencies = [
  "dependent-details-utils",
  "dependent-entity-list-utils",
  "dependent-models",
+ "enum-models",
  "media-models",
  "miscellaneous-entity-user-details-service",
  "miscellaneous-general-service",

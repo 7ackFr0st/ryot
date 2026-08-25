@@ -23,6 +23,16 @@ pub struct GenreListItem {
     pub num_items: Option<i64>,
 }
 
+/// A metadata item that is still partial (title unknown/unresolved) for a user.
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, SimpleObject, Clone, FromQueryResult)]
+pub struct PartialMetadataListItem {
+    pub id: String,
+    pub title: String,
+    pub lot: MediaLot,
+    pub source: MediaSource,
+    pub identifier: String,
+}
+
 #[derive(PartialEq, Default, Eq, Debug, Serialize, Deserialize, SimpleObject, Clone)]
 pub struct MetadataSearchItem {
     pub title: String,

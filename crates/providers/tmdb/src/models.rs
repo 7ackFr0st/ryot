@@ -56,6 +56,14 @@ pub struct TmdbEntry {
     pub first_air_date: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct TmdbFindResponse {
+    #[serde(default)]
+    pub movie_results: Vec<TmdbEntry>,
+    #[serde(default)]
+    pub tv_results: Vec<TmdbEntry>,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TmdbListResponse {
     pub page: i32,

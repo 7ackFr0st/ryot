@@ -211,6 +211,24 @@ mutation DisassociateMetadata($metadataId: String!) {
 	disassociateMetadata(metadataId: $metadataId)
 }
 
+mutation ReidentifyMetadata(
+	$metadataId: String!
+	$newLot: MediaLot!
+	$newSource: MediaSource!
+	$newIdentifier: String!
+) {
+	reidentifyMetadata(
+		metadataId: $metadataId
+		newLot: $newLot
+		newSource: $newSource
+		newIdentifier: $newIdentifier
+	)
+}
+
+mutation AutoReidentifyMetadataViaTmdb($metadataId: String!) {
+	autoReidentifyMetadataViaTmdb(metadataId: $metadataId)
+}
+
 mutation CreateOrUpdateReview($input: CreateOrUpdateReviewInput!) {
 	createOrUpdateReview(input: $input) {
 		id
