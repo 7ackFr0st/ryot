@@ -229,7 +229,7 @@ async fn main() -> Result<()> {
                     .backend(mp_application_job_storage.lock().unwrap().take().unwrap())
                     .catch_panic()
                     .enable_tracing()
-                    .rate_limit(10, Duration::new(5, 0))
+                    .rate_limit(30, Duration::new(5, 0))
                     .data(ss5.clone())
                     .build(perform_mp_application_job)
             })
