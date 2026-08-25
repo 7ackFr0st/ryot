@@ -27,6 +27,8 @@ export const BaseEntityDisplay = (props: {
 	image?: string;
 	title?: string;
 	extraText?: string;
+	imageWidth?: number;
+	imageHeight?: number;
 	hasInteracted?: boolean;
 	ref?: Ref<HTMLDivElement>;
 	isPartialStatusActive?: boolean;
@@ -34,8 +36,8 @@ export const BaseEntityDisplay = (props: {
 	return (
 		<WrapperComponent link={props.link}>
 			<Avatar
-				w={85}
-				h={100}
+				w={props.imageWidth || 85}
+				h={props.imageHeight || 100}
 				mx="auto"
 				radius="sm"
 				ref={props.ref}
@@ -62,6 +64,8 @@ export const BaseEntityDisplay = (props: {
 export const PartialMetadataDisplay = (props: {
 	metadataId: string;
 	extraText?: string;
+	imageWidth?: number;
+	imageHeight?: number;
 }) => {
 	const { ref, inViewport } = useInViewport();
 	const [{ data: metadataDetails }, isPartialStatusActive] = useMetadataDetails(
@@ -95,6 +99,8 @@ export const PartialMetadataDisplay = (props: {
 		<BaseEntityDisplay
 			ref={ref}
 			extraText={props.extraText}
+			imageWidth={props.imageWidth}
+			imageHeight={props.imageHeight}
 			isPartialStatusActive={isPartialStatusActive}
 			hasInteracted={userMetadataDetails?.hasInteracted}
 			image={metadataImageTranslation || images.at(0)}

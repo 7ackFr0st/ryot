@@ -25,6 +25,7 @@ import {
 	MediaSource,
 	MergeMetadataDocument,
 	type MetadataProgressUpdateChange,
+	type MetadataProgressUpdateInput,
 	SeenState,
 	UpdateSeenItemDocument,
 	UserReviewScale,
@@ -79,6 +80,7 @@ import {
 } from "~/components/media/base-display";
 import {
 	MarkEntityAsPartialMenuItem,
+	ReidentifyMetadataMenuItem,
 	ToggleMediaMonitorMenuItem,
 	WebSearchMenuItem,
 } from "~/components/media/menu-items";
@@ -993,6 +995,16 @@ export default function Page() {
 													entityLot={EntityLot.Metadata}
 													entityId={loaderData.metadataId}
 												/>
+												{metadataDetails.data &&
+												metadataDetails.data.source !== MediaSource.Custom ? (
+													<ReidentifyMetadataMenuItem
+														title={title}
+														metadataLot={metadataDetails.data.lot}
+														metadataId={loaderData.metadataId}
+														metadataSource={metadataDetails.data.source}
+														metadataIdentifier={metadataDetails.data.identifier}
+													/>
+												) : null}
 												<WebSearchMenuItem title={title} />
 											</Menu.Dropdown>
 										</Menu>
@@ -1046,18 +1058,47 @@ export default function Page() {
 							</Tabs.Panel>
 							<Tabs.Panel value="showSeasons" h={MEDIA_DETAILS_HEIGHT}>
 								{metadataDetails.data.showSpecifics ? (
-									<Virtuoso
-										data={metadataDetails.data.showSpecifics.seasons}
-										itemContent={(seasonIdx, season) => (
-											<DisplayShowSeason
-												season={season}
-												seasonIdx={seasonIdx}
-												key={season.seasonNumber}
-												metadataId={loaderData.metadataId}
-												openSeasonModal={() => setOpenedShowSeason(seasonIdx)}
-											/>
-										)}
-									/>
+									<Stack gap="xs" h="100%">
+										<Button
+											size="xs"
+											color="blue"
+											variant="outline"
+											style={{ alignSelf: "flex-start" }}
+											loading={deployBulkMetadataProgressUpdate.isPending}
+											onClick={() => {
+												const updates: MetadataProgressUpdateInput[] =
+													metadataDetails.data.showSpecifics?.seasons.flatMap(
+														(season) =>
+															season.episodes.map((episode) => ({
+																metadataId: loaderData.metadataId,
+																change: {
+																	createNewCompleted: {
+																		withoutDates: {
+																			showSeasonNumber: season.seasonNumber,
+																			showEpisodeNumber: episode.episodeNumber,
+																		},
+																	},
+																},
+															})),
+													) || [];
+												deployBulkMetadataProgressUpdate.mutate(updates);
+											}}
+										>
+											Mark entire show as seen
+										</Button>
+										<Virtuoso
+											data={metadataDetails.data.showSpecifics.seasons}
+											itemContent={(seasonIdx, season) => (
+												<DisplayShowSeason
+													season={season}
+													seasonIdx={seasonIdx}
+													key={season.seasonNumber}
+													metadataId={loaderData.metadataId}
+													openSeasonModal={() => setOpenedShowSeason(seasonIdx)}
+												/>
+											)}
+										/>
+									</Stack>
 								) : null}
 							</Tabs.Panel>
 							{metadataDetails.data.podcastSpecifics ? (
@@ -1104,16 +1145,14 @@ export default function Page() {
 										totalCount={metadataDetails.data.suggestions.length}
 										itemContent={(index) => (
 											<PartialMetadataDisplay
+												imageWidth={140}
+												imageHeight={165}
 												metadataId={metadataDetails.data.suggestions[index]}
 											/>
 										)}
 										components={{
 											List: forwardRef((props, ref) => (
-												<SimpleGrid
-													ref={ref}
-													{...props}
-													cols={{ base: 3, md: 4, lg: 5 }}
-												/>
+												<SimpleGrid ref={ref} {...props} cols={3} spacing="xs" />
 											)),
 										}}
 									/>

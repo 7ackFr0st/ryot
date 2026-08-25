@@ -3,7 +3,6 @@ import {
 	Anchor,
 	Box,
 	Checkbox,
-	Container,
 	Flex,
 	Group,
 	Image,
@@ -27,7 +26,6 @@ import { IconEdit, IconPlus, IconTrashFilled } from "@tabler/icons-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { parseAsBoolean, parseAsString } from "nuqs";
 import { Link } from "react-router";
-import { Virtuoso } from "react-virtuoso";
 import { $path } from "safe-routes";
 import {
 	DisplayListDetailsAndRefresh,
@@ -86,8 +84,8 @@ export default function Page() {
 		);
 
 	return (
-		<Container size="sm">
-			<Stack>
+		<Stack gap="md" px={{ base: "md", md: "xl" }}>
+			<Stack gap="md" style={{ position: "sticky", top: 0, zIndex: 10 }} bg="var(--mantine-color-body)" pb="xs">
 				<Group justify="space-between" wrap="nowrap">
 					<Flex align="center" gap="md">
 						<Title>Your collections</Title>
@@ -117,18 +115,13 @@ export default function Page() {
 						/>
 					) : null}
 				</Group>
-				<Virtuoso
-					style={{ height: "80vh" }}
-					data={filteredCollections}
-					itemContent={(index) => {
-						const c = filteredCollections[index];
-						return (
-							<DisplayCollection key={c.id} index={index} collection={c} />
-						);
-					}}
-				/>
 			</Stack>
-		</Container>
+			<Stack gap="lg">
+				{filteredCollections.map((c, index) => (
+					<DisplayCollection key={c.id} index={index} collection={c} />
+				))}
+			</Stack>
+		</Stack>
 	);
 }
 
@@ -234,7 +227,6 @@ const DisplayCollection = (props: {
 			pl={{ base: "md", md: 0 }}
 			py={{ base: "sm", md: 0 }}
 			style={{ overflow: "hidden" }}
-			mt={props.index !== 0 ? "lg" : undefined}
 		>
 			<Flex gap="xs" direction={{ base: "column", md: "row" }}>
 				<Flex

@@ -15,7 +15,7 @@ import { sum } from "@ryot/ts-utils";
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { parseAsString } from "nuqs";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
 	DisplayListDetailsAndRefresh,
 	SkeletonLoader,
@@ -53,6 +53,19 @@ export default function Page() {
 	});
 
 	const updateDate = (newDate: string) => updateFilters({ date: newDate });
+
+	const hasScrolledToToday = useRef(false);
+	useEffect(() => {
+		if (!userCalendarEvents || hasScrolledToToday.current) return;
+		const todayEvent = userCalendarEvents.find((ce) =>
+			dayjsLib(ce.date).isSame(dayjsLib(), "day"),
+		);
+		if (!todayEvent) return;
+		hasScrolledToToday.current = true;
+		document
+			.querySelector(`[data-calendar-date="${todayEvent.date}"]`)
+			?.scrollIntoView({ block: "start" });
+	}, [userCalendarEvents]);
 
 	return (
 		<Container>
