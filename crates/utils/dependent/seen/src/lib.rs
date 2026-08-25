@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
+use chrono::Utc;
 use common_models::{ChangeCollectionToEntitiesInput, DefaultCollection, EntityToCollectionInput};
 use common_utils::SHOW_SPECIAL_SEASON_NAMES;
 use database_models::{
@@ -50,6 +51,7 @@ pub async fn is_metadata_finished_by_user(
     {
         // DEV: If all episodes have been seen the same number of times, the media can be
         // considered finished.
+        let today = Utc::now().date_naive();
         let all_episodes = if let Some(s) = metadata.show_specifics {
             s.seasons
                 .into_iter()
@@ -57,12 +59,14 @@ pub async fn is_metadata_finished_by_user(
                 .flat_map(|s| {
                     s.episodes
                         .into_iter()
+                        .filter(|e| e.publish_date.is_none_or(|d| d <= today))
                         .map(move |e| format!("{}-{}", s.season_number, e.episode_number))
                 })
                 .collect_vec()
         } else if let Some(p) = metadata.podcast_specifics {
             p.episodes
                 .into_iter()
+                .filter(|e| e.publish_date <= today)
                 .map(|e| format!("{}", e.number))
                 .collect_vec()
         } else if let Some(e) = metadata.anime_specifics.and_then(|a| a.episodes) {
@@ -173,6 +177,11 @@ pub async fn handle_after_metadata_seen_tasks(
                     remove_entities_from_collection(&DefaultCollection::InProgress.to_string())
                         .await?;
                     add_entities_to_collection(&DefaultCollection::Completed.to_string()).await?;
+                    // DEV: Ongoing media types can release new seasons/episodes after
+                    // being marked complete, so keep monitoring them for updates.
+                    add_entities_to_collection(&DefaultCollection::Monitoring.to_string())
+                        .await
+                        .ok();
                 } else {
                     for col in &[DefaultCollection::InProgress, DefaultCollection::Monitoring] {
                         add_entities_to_collection(&col.to_string()).await.ok();
