@@ -361,7 +361,16 @@ pub struct UserGeneralPreferences {
             .collect(),
     }]))]
     pub watch_providers: Vec<UserGeneralWatchProvider>,
-    #[educe(Default(expression = vec![
+    #[educe(Default(expression = default_dashboard_elements()))]
+    #[serde(
+        default = "default_dashboard_elements",
+        deserialize_with = "deserialize_dashboard_with_defaults"
+    )]
+    pub dashboard: Vec<UserGeneralDashboardElement>,
+}
+
+fn default_dashboard_elements() -> Vec<UserGeneralDashboardElement> {
+    vec![
         UserGeneralDashboardElement {
             num_elements: Some(8),
             deduplicate_media: Some(true),
@@ -392,8 +401,26 @@ pub struct UserGeneralPreferences {
             section: DashboardElementLot::Trending,
             ..Default::default()
         },
-    ]))]
-    pub dashboard: Vec<UserGeneralDashboardElement>,
+    ]
+}
+
+// DEV: Existing users' persisted preferences JSON predates newly-added
+// dashboard sections (eg. History), so a raw deserialize would silently omit
+// them forever. Backfill any missing section with its default on every load
+// instead of requiring a data migration each time a new section is added.
+fn deserialize_dashboard_with_defaults<'de, D>(
+    deserializer: D,
+) -> Result<Vec<UserGeneralDashboardElement>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let mut elements = Vec::<UserGeneralDashboardElement>::deserialize(deserializer)?;
+    for default_element in default_dashboard_elements() {
+        if !elements.iter().any(|e| e.section == default_element.section) {
+            elements.push(default_element);
+        }
+    }
+    Ok(elements)
 }
 
 #[derive(

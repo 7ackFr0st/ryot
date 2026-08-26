@@ -39,7 +39,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { data, Form, useNavigate } from "react-router";
 import { ClientOnly } from "remix-utils/client-only";
 import { match } from "ts-pattern";
@@ -331,6 +331,7 @@ const PartialMetadataCard = () => {
 		done: number;
 		total: number;
 	} | null>(null);
+	const stopRetryRef = useRef(false);
 
 	const partialList = useQuery({
 		queryKey: ["partialMetadataList"],
@@ -346,10 +347,11 @@ const PartialMetadataCard = () => {
 		const queue = [...items];
 		const total = queue.length;
 		let done = 0;
+		stopRetryRef.current = false;
 		setRetryProgress({ done: 0, total });
 
 		const worker = async () => {
-			while (queue.length > 0) {
+			while (queue.length > 0 && !stopRetryRef.current) {
 				const item = queue.shift();
 				if (!item) break;
 				try {
@@ -472,9 +474,21 @@ const PartialMetadataCard = () => {
 					{retryProgress ? (
 						<Stack gap={4}>
 							<Progress value={retryPercent} animated />
-							<Text size="xs" c="dimmed" ta="center">
-								{retryProgress.done} / {retryProgress.total} ({retryPercent}%)
-							</Text>
+							<Group justify="space-between">
+								<Text size="xs" c="dimmed">
+									{retryProgress.done} / {retryProgress.total} ({retryPercent}%)
+								</Text>
+								<Button
+									size="xs"
+									color="red"
+									variant="subtle"
+									onClick={() => {
+										stopRetryRef.current = true;
+									}}
+								>
+									Stop
+								</Button>
+							</Group>
 						</Stack>
 					) : null}
 					<Group grow>
