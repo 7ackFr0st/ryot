@@ -164,7 +164,16 @@ pub async fn partial_metadata_list(
         .into_model::<PartialMetadataListItem>()
         .all(&ss.db)
         .await?;
-    Ok(items)
+    // DEV: `is_partial` is also flipped back to true by the periodic
+    // put_entities_in_partial_state background job to queue a routine
+    // provider refresh, not just for genuinely-never-identified items.
+    // Those still carry their real title, so only items whose title is
+    // literally the raw provider id (never successfully fetched) belong
+    // in this "needs identification" list.
+    Ok(items
+        .into_iter()
+        .filter(|i| i.title == i.identifier)
+        .collect())
 }
 
 /// Re-point an existing (typically partial/mis-identified) metadata item to a
