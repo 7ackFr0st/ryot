@@ -68,6 +68,11 @@ fn get_expiry_for_key(ss: &Arc<SupportingService>, key: &ApplicationCacheKey) ->
 
         ApplicationCacheKey::LogDownloadToken { .. } => Duration::minutes(1),
 
+        // DEV: Safety net in case a Stop/Pause webhook event is ever missed
+        // (network drop, app crash) - the "now watching" state should not
+        // stay stuck forever if playback actually ended.
+        ApplicationCacheKey::UserCurrentlyWatching { .. } => Duration::minutes(10),
+
         ApplicationCacheKey::MediaTranslationInProgress { .. } => Duration::minutes(15),
 
         ApplicationCacheKey::SpotifyAccessToken => Duration::minutes(50),

@@ -152,6 +152,40 @@ pub async fn commit_import_seen_item(
     }
 
     if in_progress_cache.is_none() {
+        // DEV: A first-ever call that already reports 100% (eg. Jellyfin's
+        // MarkPlayed event, which has no real playback session to progress
+        // through) should complete immediately rather than being stuck as
+        // "in progress" until some hypothetical follow-up call arrives.
+        if input.progress.is_some_and(|p| p >= dec!(100)) {
+            ryot_log!(
+                debug,
+                "[1611 SEEN {}] First call already at 100%, creating as completed directly for: {}",
+                seen_execution_id,
+                metadata_id
+            );
+            let change = MetadataProgressUpdateChange::CreateNewCompleted(
+                MetadataProgressUpdateChangeCreateNewCompletedInput::WithoutDates(common),
+            );
+            metadata_progress_update(
+                user_id,
+                ss,
+                MetadataProgressUpdateInput {
+                    change,
+                    metadata_id: metadata_id.to_owned(),
+                },
+            )
+            .await?;
+            cache_service::set_key(
+                ss,
+                completed_cache_key,
+                ApplicationCacheValue::MetadataProgressUpdateCompletedCache(
+                    EmptyCacheValue::default(),
+                ),
+            )
+            .await?;
+            return Ok(());
+        }
+
         ryot_log!(
             debug,
             "[1611 SEEN {}] in_progress_cache is None, creating new in-progress seen",

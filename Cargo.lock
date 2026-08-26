@@ -5135,6 +5135,8 @@ version = "0.1.0"
 dependencies = [
  "async-graphql",
  "common-models",
+ "dependent-models",
+ "dependent-seen-utils",
  "media-models",
  "miscellaneous-calendar-service",
  "miscellaneous-progress-service",

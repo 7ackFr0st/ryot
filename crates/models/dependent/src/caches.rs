@@ -58,6 +58,14 @@ pub struct UserPasswordChangeSessionValue {
 
 #[skip_serializing_none]
 #[derive(Clone, Hash, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UserCurrentlyWatchingCacheValue {
+    pub metadata_id: String,
+    pub show_season_number: Option<i32>,
+    pub show_episode_number: Option<i32>,
+}
+
+#[skip_serializing_none]
+#[derive(Clone, Hash, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MediaTranslationInProgressCacheInput {
     pub language: String,
     pub entity_id: String,
@@ -89,6 +97,7 @@ pub enum ApplicationCacheKey {
     ListennotesSettings,
     UserSession(String),
     TrendingMetadataIds,
+    UserCurrentlyWatching(UserLevelCacheKey<()>),
     PersonDetails(String),
     MetadataDetails(String),
     LogDownloadToken(String),
@@ -146,6 +155,7 @@ pub enum ApplicationCacheValue {
     CoreDetails(Box<CoreDetails>),
     UserSession(UserSessionValue),
     LogDownloadToken(EmptyCacheValue),
+    UserCurrentlyWatching(UserCurrentlyWatchingCacheValue),
     PeopleSearch(PeopleSearchResponse),
     SpotifyAccessToken(SpotifyAccessToken),
     MetadataLookup(MetadataLookupResponse),
