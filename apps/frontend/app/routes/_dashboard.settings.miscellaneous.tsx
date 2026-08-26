@@ -317,7 +317,7 @@ const DownloadLogsButton = () => {
 	);
 };
 
-const RETRY_CONCURRENCY = 1;
+const RETRY_CONCURRENCY = 5;
 
 const PartialMetadataCard = () => {
 	const theme = useMantineTheme();
