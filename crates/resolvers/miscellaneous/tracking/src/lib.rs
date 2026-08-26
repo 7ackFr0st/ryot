@@ -1,5 +1,6 @@
 use async_graphql::{Context, Object, Result};
 use common_models::StringIdObject;
+use dependent_models::{UserCurrentlyWatchingResponse, UserRecentlyWatchedHistoryItem};
 use media_models::{
     GraphqlCalendarEvent, GroupedCalendarEvent, MetadataProgressUpdateInput, UpdateSeenItemInput,
     UserCalendarEventInput, UserUpcomingCalendarEventInput,
@@ -34,6 +35,26 @@ impl MiscellaneousTrackingQueryResolver {
             miscellaneous_calendar_service::user_upcoming_calendar_events(service, user_id, input)
                 .await?,
         )
+    }
+
+    /// Get the media item the user is currently watching, if any, based on
+    /// real-time Play/Pause/Stop events received from integration webhooks.
+    async fn user_currently_watching(
+        &self,
+        gql_ctx: &Context<'_>,
+    ) -> Result<Option<UserCurrentlyWatchingResponse>> {
+        let (service, user_id) = self.dependency_and_user(gql_ctx).await?;
+        Ok(dependent_seen_utils::user_currently_watching(&user_id, service).await?)
+    }
+
+    /// Get the most recently completed seen items for a user, across all media types.
+    async fn user_recently_watched_history(
+        &self,
+        gql_ctx: &Context<'_>,
+        take: u64,
+    ) -> Result<Vec<UserRecentlyWatchedHistoryItem>> {
+        let (service, user_id) = self.dependency_and_user(gql_ctx).await?;
+        Ok(dependent_seen_utils::user_recently_watched_history(&user_id, service, take).await?)
     }
 }
 

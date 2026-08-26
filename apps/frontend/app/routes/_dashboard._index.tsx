@@ -1,6 +1,7 @@
 import {
 	ActionIcon,
 	Alert,
+	Anchor,
 	Button,
 	Container,
 	Drawer,
@@ -19,11 +20,14 @@ import {
 	GraphqlSortOrder,
 	MinimalUserAnalyticsDocument,
 	TrendingMetadataDocument,
+	UserCurrentlyWatchingDocument,
 	UserMetadataRecommendationsDocument,
+	UserRecentlyWatchedHistoryDocument,
+	type UserRecentlyWatchedHistoryQuery,
 	type UserUpcomingCalendarEventInput,
 	UserUpcomingCalendarEventsDocument,
 } from "@ryot/generated/graphql/backend/graphql";
-import { parseSearchQuery, zodBoolAsString } from "@ryot/ts-utils";
+import { isNumber, parseSearchQuery, zodBoolAsString } from "@ryot/ts-utils";
 import {
 	IconInfoCircle,
 	IconPlayerPlay,
@@ -32,8 +36,9 @@ import {
 import { skipToken, useQuery } from "@tanstack/react-query";
 import CryptoJS from "crypto-js";
 import { type ReactNode, useMemo } from "react";
-import { redirect } from "react-router";
+import { Link, redirect } from "react-router";
 import { ClientOnly } from "remix-utils/client-only";
+import { $path } from "safe-routes";
 import { match } from "ts-pattern";
 import { useLocalStorage } from "usehooks-ts";
 import { z } from "zod";
@@ -55,7 +60,11 @@ import {
 	useUserDetails,
 	useUserPreferences,
 } from "~/lib/shared/hooks";
-import { clientGqlService, queryFactory } from "~/lib/shared/react-query";
+import {
+	clientGqlService,
+	getMetadataDetailsQuery,
+	queryFactory,
+} from "~/lib/shared/react-query";
 import { openConfirmationModal } from "~/lib/shared/ui-utils";
 import { useOnboardingTour } from "~/lib/state/onboarding-tour";
 import { getUserPreferences } from "~/lib/utilities.server";
@@ -101,7 +110,24 @@ export default function Page() {
 
 	const takeUpcoming = dbElm(DashboardElementLot.Upcoming)?.numElements;
 	const takeInProgress = dbElm(DashboardElementLot.InProgress)?.numElements;
+	const takeHistory = dbElm(DashboardElementLot.History)?.numElements || 10;
 	const daysAheadUpcoming = dbElm(DashboardElementLot.Upcoming)?.numDaysAhead;
+
+	const userCurrentlyWatchingQuery = useQuery({
+		refetchInterval: 30_000,
+		queryKey: queryFactory.miscellaneous.userCurrentlyWatching().queryKey,
+		queryFn: () => clientGqlService.request(UserCurrentlyWatchingDocument),
+	});
+
+	const userRecentlyWatchedHistoryQuery = useQuery({
+		queryKey:
+			queryFactory.miscellaneous.userRecentlyWatchedHistory(takeHistory)
+				.queryKey,
+		queryFn: () =>
+			clientGqlService.request(UserRecentlyWatchedHistoryDocument, {
+				take: takeHistory,
+			}),
+	});
 
 	const inProgressCollection = userCollections.find(
 		(c) => c.name === "In Progress",
@@ -187,6 +213,31 @@ export default function Page() {
 						</>
 					)}
 				</ClientOnly>
+				{userCurrentlyWatchingQuery.data?.userCurrentlyWatching ? (
+					<Stack gap="sm" id="now-watching">
+						<SectionTitle text="Currently Watching" />
+						<ApplicationGrid>
+							<MetadataDisplayItem
+								metadataId={
+									userCurrentlyWatchingQuery.data.userCurrentlyWatching
+										.metadataId
+								}
+								additionalInformation={
+									isNumber(
+										userCurrentlyWatchingQuery.data.userCurrentlyWatching
+											.showSeasonNumber,
+									) &&
+									isNumber(
+										userCurrentlyWatchingQuery.data.userCurrentlyWatching
+											.showEpisodeNumber,
+									)
+										? `S${userCurrentlyWatchingQuery.data.userCurrentlyWatching.showSeasonNumber}-E${userCurrentlyWatchingQuery.data.userCurrentlyWatching.showEpisodeNumber}`
+										: undefined
+								}
+							/>
+						</ApplicationGrid>
+					</Stack>
+				) : null}
 				{userPreferences.general.dashboard.map((de) =>
 					match([de.section, de.hidden])
 						.with([DashboardElementLot.Upcoming, false], ([v, _]) => (
@@ -241,6 +292,27 @@ export default function Page() {
 						.with([DashboardElementLot.Recommendations, false], ([v, _]) => (
 							<Section key={v} lot={v}>
 								<RecommendationsSection />
+							</Section>
+						))
+						.with([DashboardElementLot.History, false], ([v, _]) => (
+							<Section key={v} lot={v}>
+								<SectionTitle text="History" />
+								{userRecentlyWatchedHistoryQuery.data ? (
+									userRecentlyWatchedHistoryQuery.data
+										.userRecentlyWatchedHistory.length > 0 ? (
+										<Stack gap={4}>
+											{userRecentlyWatchedHistoryQuery.data.userRecentlyWatchedHistory.map(
+												(item) => (
+													<HistoryItemRow key={item.seenId} item={item} />
+												),
+											)}
+										</Stack>
+									) : (
+										<Text c="dimmed">No history yet.</Text>
+									)
+								) : (
+									<SkeletonLoader />
+								)}
 							</Section>
 						))
 						.with([DashboardElementLot.Summary, false], ([v, _]) => (
@@ -416,6 +488,34 @@ const SectionTitle = (props: { text: string }) => (
 		{props.text}
 	</Text>
 );
+
+const HistoryItemRow = (props: {
+	item: UserRecentlyWatchedHistoryQuery["userRecentlyWatchedHistory"][number];
+}) => {
+	const { data: metadataDetails } = useQuery(
+		getMetadataDetailsQuery(props.item.metadataId),
+	);
+
+	const extraInformation = isNumber(props.item.showSeasonNumber)
+		? `S${props.item.showSeasonNumber}E${props.item.showEpisodeNumber}`
+		: isNumber(props.item.podcastEpisodeNumber)
+			? `EP${props.item.podcastEpisodeNumber}`
+			: undefined;
+
+	return (
+		<Anchor
+			component={Link}
+			c="inherit"
+			underline="hover"
+			to={$path("/media/item/:id", { id: props.item.metadataId })}
+		>
+			<Text size="sm" truncate>
+				{metadataDetails?.title || "Loading..."}
+				{extraInformation ? ` ${extraInformation}` : null}
+			</Text>
+		</Anchor>
+	);
+};
 
 const UpcomingMediaSection = (props: { um: CalendarEventPartFragment }) => {
 	const today = dayjsLib().startOf("day");

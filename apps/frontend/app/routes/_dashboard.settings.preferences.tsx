@@ -78,6 +78,7 @@ const EDITABLE_DEDUPLICATE_MEDIA = [DashboardElementLot.Upcoming];
 const EDITABLE_NUM_ELEMENTS = [
 	DashboardElementLot.Upcoming,
 	DashboardElementLot.InProgress,
+	DashboardElementLot.History,
 	DashboardElementLot.Recommendations,
 ];
 

@@ -190,6 +190,12 @@ const miscellaneousQueryKeys = createQueryKeys("miscellaneous", {
 	presignedS3Urls: (key: string[] | undefined) => ({
 		queryKey: ["presignedS3Urls", key],
 	}),
+	userCurrentlyWatching: () => ({
+		queryKey: ["userCurrentlyWatching"],
+	}),
+	userRecentlyWatchedHistory: (take: number) => ({
+		queryKey: ["userRecentlyWatchedHistory", take],
+	}),
 });
 
 export const queryFactory = mergeQueryKeys(

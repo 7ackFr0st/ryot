@@ -2,7 +2,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
 use chrono::Utc;
-use common_models::{ChangeCollectionToEntitiesInput, DefaultCollection, EntityToCollectionInput};
+use common_models::{
+    ChangeCollectionToEntitiesInput, DefaultCollection, EntityToCollectionInput, UserLevelCacheKey,
+};
 use common_utils::SHOW_SPECIAL_SEASON_NAMES;
 use database_models::{
     prelude::{Metadata, Seen},
@@ -10,14 +12,17 @@ use database_models::{
 };
 use dependent_collection_utils::{add_entities_to_collection, remove_entities_from_collection};
 use dependent_details_utils::metadata_details;
-use dependent_models::{ApplicationCacheKeyDiscriminants, ExpireCacheKeyInput};
+use dependent_models::{
+    ApplicationCacheKey, ApplicationCacheKeyDiscriminants, ExpireCacheKeyInput,
+    UserCurrentlyWatchingCacheValue, UserCurrentlyWatchingResponse, UserRecentlyWatchedHistoryItem,
+};
 use enum_models::{EntityLot, MediaLot, SeenState};
 use itertools::Itertools;
 use rust_decimal::{
     Decimal,
     prelude::{One, ToPrimitive},
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use supporting_service::SupportingService;
 
 pub async fn metadata_seen_history(
@@ -32,6 +37,55 @@ pub async fn metadata_seen_history(
         .all(&ss.db)
         .await?;
     Ok(seen_items)
+}
+
+pub async fn user_currently_watching(
+    user_id: &str,
+    ss: &Arc<SupportingService>,
+) -> Result<Option<UserCurrentlyWatchingResponse>> {
+    let key = ApplicationCacheKey::UserCurrentlyWatching(UserLevelCacheKey {
+        input: (),
+        user_id: user_id.to_owned(),
+    });
+    let Some((_, value)) = cache_service::get_value::<UserCurrentlyWatchingCacheValue>(ss, key)
+        .await
+    else {
+        return Ok(None);
+    };
+    Ok(Some(UserCurrentlyWatchingResponse {
+        metadata_id: value.metadata_id,
+        show_season_number: value.show_season_number,
+        show_episode_number: value.show_episode_number,
+    }))
+}
+
+pub async fn user_recently_watched_history(
+    user_id: &str,
+    ss: &Arc<SupportingService>,
+    take: u64,
+) -> Result<Vec<UserRecentlyWatchedHistoryItem>> {
+    let seen_items = Seen::find()
+        .filter(seen::Column::UserId.eq(user_id))
+        .filter(seen::Column::State.eq(SeenState::Completed))
+        .order_by_desc(seen::Column::LastUpdatedOn)
+        .limit(take)
+        .all(&ss.db)
+        .await?;
+    let mut items = vec![];
+    for s in seen_items {
+        let Some(metadata) = Metadata::find_by_id(&s.metadata_id).one(&ss.db).await? else {
+            continue;
+        };
+        items.push(UserRecentlyWatchedHistoryItem {
+            seen_id: s.id,
+            metadata_id: s.metadata_id,
+            lot: metadata.lot,
+            show_season_number: s.show_extra_information.as_ref().map(|i| i.season),
+            show_episode_number: s.show_extra_information.as_ref().map(|i| i.episode),
+            podcast_episode_number: s.podcast_extra_information.as_ref().map(|i| i.episode),
+        });
+    }
+    Ok(items)
 }
 
 pub async fn is_metadata_finished_by_user(

@@ -268,6 +268,7 @@ pub enum UserReviewScale {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DashboardElementLot {
     Summary,
+    History,
     Upcoming,
     Trending,
     InProgress,
@@ -374,6 +375,11 @@ pub struct UserGeneralPreferences {
         },
         UserGeneralDashboardElement {
             section: DashboardElementLot::Summary,
+            ..Default::default()
+        },
+        UserGeneralDashboardElement {
+            num_elements: Some(10),
+            section: DashboardElementLot::History,
             ..Default::default()
         },
         UserGeneralDashboardElement {

@@ -43,6 +43,23 @@ pub struct SortInput<T: InputType + Default> {
     pub order: GraphqlSortOrder,
 }
 
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, SimpleObject, Clone)]
+pub struct UserCurrentlyWatchingResponse {
+    pub metadata_id: String,
+    pub show_season_number: Option<i32>,
+    pub show_episode_number: Option<i32>,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, SimpleObject, Clone)]
+pub struct UserRecentlyWatchedHistoryItem {
+    pub seen_id: String,
+    pub metadata_id: String,
+    pub lot: MediaLot,
+    pub show_season_number: Option<i32>,
+    pub show_episode_number: Option<i32>,
+    pub podcast_episode_number: Option<i32>,
+}
+
 #[derive(Debug, PartialEq, Eq, SimpleObject, Serialize, Deserialize, Clone)]
 pub struct CollectionContents {
     pub total_items: u64,

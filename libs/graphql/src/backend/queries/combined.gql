@@ -167,6 +167,25 @@ query UserCalendarEvents($input: UserCalendarEventInput!) {
 	}
 }
 
+query UserCurrentlyWatching {
+	userCurrentlyWatching {
+		metadataId
+		showSeasonNumber
+		showEpisodeNumber
+	}
+}
+
+query UserRecentlyWatchedHistory($take: Int!) {
+	userRecentlyWatchedHistory(take: $take) {
+		seenId
+		metadataId
+		lot
+		showSeasonNumber
+		showEpisodeNumber
+		podcastEpisodeNumber
+	}
+}
+
 query UserMetadataGroupsList($input: UserMetadataGroupsListInput!) {
 	userMetadataGroupsList(input: $input) {
 		cacheId
