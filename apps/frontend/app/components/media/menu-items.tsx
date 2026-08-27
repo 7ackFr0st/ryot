@@ -134,7 +134,10 @@ export const ReidentifyMetadataMenuItem = (props: {
 				currentSource={props.metadataSource}
 				currentIdentifier={props.metadataIdentifier}
 			/>
-			<Menu.Item leftSection={<IconSearch size={14} />} onClick={open}>
+			<Menu.Item
+				leftSection={<IconSearch size={14} />}
+				onClick={() => setTimeout(open, 0)}
+			>
 				Re-identify
 			</Menu.Item>
 		</>
