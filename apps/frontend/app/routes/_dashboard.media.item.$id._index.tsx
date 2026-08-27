@@ -58,7 +58,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { data, Form, Link, useLoaderData } from "react-router";
+import { data, Form, Link, useLoaderData, useSubmit } from "react-router";
 import { Virtuoso, VirtuosoGrid, type VirtuosoHandle } from "react-virtuoso";
 import { $path } from "safe-routes";
 import { match } from "ts-pattern";
@@ -117,6 +117,7 @@ import {
 	getRatingUnitSuffix,
 	getVerb,
 } from "~/lib/shared/media-utils";
+import { refreshEntityDetails } from "~/lib/shared/react-query";
 import {
 	getProviderSourceImage,
 	openConfirmationModal,
@@ -242,6 +243,7 @@ const editSeenItem = z.object({
 export default function Page() {
 	const loaderData = useLoaderData<typeof loader>();
 	const submit = useConfirmSubmit();
+	const rawSubmit = useSubmit();
 	const userPreferences = useUserPreferences();
 
 	const [metadataDetails, isMetadataPartialStatusActive] = useMetadataDetails(
@@ -320,6 +322,26 @@ export default function Page() {
 	const changeProgressState = useCallback(
 		(state: SeenState) => changeProgress({ changeLatestState: state }),
 		[changeProgress],
+	);
+
+	const removeLastSeen = useCallback(
+		(seenId: string) => {
+			openConfirmationModal(
+				"Are you sure you want to remove the last watch? This will decrease the times seen count by one.",
+				() => {
+					rawSubmit(
+						{ seenId },
+						{
+							method: "post",
+							navigate: false,
+							action: withQuery(".", { intent: "deleteSeenItem" }),
+						},
+					);
+					refreshEntityDetails(loaderData.metadataId);
+				},
+			);
+		},
+		[rawSubmit, loaderData.metadataId],
 	);
 
 	const metadataGroupTitleTranslation = useMetadataGroupTranslationValue({
@@ -874,6 +896,22 @@ export default function Page() {
 															{getVerb(Verb.Read, metadataDetails.data.lot)}{" "}
 															history
 														</Menu.Item>
+														{(() => {
+															const lastCompleted =
+																userMetadataDetails.data?.history.find(
+																	(h) => h.state === SeenState.Completed,
+																);
+															return lastCompleted ? (
+																<Menu.Item
+																	color="red"
+																	onClick={() =>
+																		removeLastSeen(lastCompleted.id)
+																	}
+																>
+																	Remove last watch
+																</Menu.Item>
+															) : null;
+														})()}
 													</>
 												) : null}
 											</Menu.Dropdown>

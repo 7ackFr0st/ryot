@@ -1,14 +1,21 @@
 import { Box, Button, Group } from "@mantine/core";
 import type { MetadataProgressUpdateInput } from "@ryot/generated/graphql/backend/graphql";
-import { EntityTranslationVariant } from "@ryot/generated/graphql/backend/graphql";
+import {
+	EntityTranslationVariant,
+	SeenState,
+} from "@ryot/generated/graphql/backend/graphql";
 import { sum } from "@ryot/ts-utils";
 import { useMemo } from "react";
+import { useSubmit } from "react-router";
+import { withQuery } from "ufo";
 import {
 	useDeployBulkMetadataProgressUpdateMutation,
 	useMetadataDetails,
 	useMetadataTranslationValue,
 	useUserMetadataDetails,
 } from "~/lib/shared/hooks";
+import { refreshEntityDetails } from "~/lib/shared/react-query";
+import { openConfirmationModal } from "~/lib/shared/ui-utils";
 import { useMetadataProgressUpdate } from "~/lib/state/media";
 import type { Season } from "../types";
 import { DisplaySeasonOrEpisodeDetails } from "./season-episode-details";
@@ -29,10 +36,33 @@ export const DisplayShowSeason = (props: {
 	const [{ data: metadataDetails }] = useMetadataDetails(props.metadataId);
 	const deployBulkMetadataProgressUpdate =
 		useDeployBulkMetadataProgressUpdateMutation(metadataDetails?.title);
+	const rawSubmit = useSubmit();
 
 	const seasonProgress = userMetadataDetails?.showProgress?.[props.seasonIdx];
 	const numTimesSeen = seasonProgress?.timesSeen || 0;
 	const isSeen = numTimesSeen > 0;
+	const lastCompletedInSeason = userMetadataDetails?.history.find(
+		(h) =>
+			h.state === SeenState.Completed &&
+			h.showExtraInformation?.season === props.season.seasonNumber,
+	);
+	const removeLastSeen = () => {
+		if (!lastCompletedInSeason) return;
+		openConfirmationModal(
+			"Are you sure you want to remove the last watched episode of this season? This will decrease the times seen count by one.",
+			() => {
+				rawSubmit(
+					{ seenId: lastCompletedInSeason.id },
+					{
+						method: "post",
+						navigate: false,
+						action: withQuery(".", { intent: "deleteSeenItem" }),
+					},
+				);
+				refreshEntityDetails(props.metadataId);
+			},
+		);
+	};
 	const showExtraInformation = useMemo(
 		() => ({ season: props.season.seasonNumber }),
 		[props.season.seasonNumber],
@@ -103,6 +133,16 @@ export const DisplayShowSeason = (props: {
 								}}
 							>
 								Rewatched
+							</Button>
+						) : null}
+						{lastCompletedInSeason ? (
+							<Button
+								size="xs"
+								color="red"
+								variant="outline"
+								onClick={removeLastSeen}
+							>
+								Remove last watch
 							</Button>
 						) : null}
 					</Group>
