@@ -383,13 +383,45 @@ async fn commit(input: CommitInput<'_>) -> Result<seen::Model> {
     Ok(resp)
 }
 
+// DEV: A show/podcast/anime/manga has many independently-progressable
+// sub-units (episodes, chapters, ...). Two seen rows for the same metadata_id
+// are only real duplicates if they're also the same sub-unit - otherwise
+// episode N still sitting at <100% would wrongly block episode N+1 from ever
+// starting. Media with no sub-unit concept (movies) has at most one seen row
+// per metadata_id anyway, so an all-None common still means "same thing".
+fn is_same_progress_unit(common: &MetadataProgressUpdateCommonInput, seen: &seen::Model) -> bool {
+    if common.show_season_number.is_some() || common.show_episode_number.is_some() {
+        return seen.show_extra_information.as_ref().is_some_and(|s| {
+            common.show_season_number == Some(s.season)
+                && common.show_episode_number == Some(s.episode)
+        });
+    }
+    if common.podcast_episode_number.is_some() {
+        return seen.podcast_extra_information.as_ref().is_some_and(|p| {
+            common.podcast_episode_number == Some(p.episode)
+        });
+    }
+    if common.anime_episode_number.is_some() {
+        return seen.anime_extra_information.as_ref().is_some_and(|a| {
+            common.anime_episode_number == a.episode
+        });
+    }
+    if common.manga_chapter_number.is_some() || common.manga_volume_number.is_some() {
+        return seen.manga_extra_information.as_ref().is_some_and(|m| {
+            common.manga_chapter_number == m.chapter && common.manga_volume_number == m.volume
+        });
+    }
+    true
+}
+
 async fn get_previous_seen_item(
     user_id: &String,
     metadata_id: &String,
     no_progress_filter: bool,
+    same_unit_as: Option<&MetadataProgressUpdateCommonInput>,
     ss: &Arc<SupportingService>,
 ) -> Result<Option<seen::Model>> {
-    let previous_seen_in_progress = Seen::find()
+    let candidates = Seen::find()
         .filter(seen::Column::UserId.eq(user_id))
         .filter(seen::Column::State.ne(SeenState::Dropped))
         .filter(seen::Column::MetadataId.eq(metadata_id))
@@ -401,8 +433,14 @@ async fn get_previous_seen_item(
             |q, _v| q.filter(seen::Column::Progress.lt(100)),
         )
         .order_by_desc(seen::Column::LastUpdatedOn)
-        .one(&ss.db)
+        .all(&ss.db)
         .await?;
+    let previous_seen_in_progress = match same_unit_as {
+        Some(common) => candidates
+            .into_iter()
+            .find(|s| is_same_progress_unit(common, s)),
+        None => candidates.into_iter().next(),
+    };
     Ok(previous_seen_in_progress)
 }
 
@@ -429,7 +467,7 @@ pub async fn metadata_progress_update(
     let seen = match input.change {
         MetadataProgressUpdateChange::ChangeLatestInProgress(new_progress) => {
             let previous_seen_in_progress =
-                get_previous_seen_item(user_id, &input.metadata_id, false, ss).await?;
+                get_previous_seen_item(user_id, &input.metadata_id, false, None, ss).await?;
             let Some(previous_seen) = previous_seen_in_progress else {
                 ryot_log!(
                     debug,
@@ -479,7 +517,7 @@ pub async fn metadata_progress_update(
         }
         MetadataProgressUpdateChange::ChangeLatestState(new_state) => {
             let previous_seen =
-                get_previous_seen_item(user_id, &input.metadata_id, true, ss).await?;
+                get_previous_seen_item(user_id, &input.metadata_id, true, None, ss).await?;
             let Some(previous_seen) = previous_seen else {
                 ryot_log!(
                     debug,
@@ -509,8 +547,14 @@ pub async fn metadata_progress_update(
             resp
         }
         MetadataProgressUpdateChange::CreateNewInProgress(create_new_in_progress) => {
-            let previous_seen_in_progress =
-                get_previous_seen_item(user_id, &input.metadata_id, false, ss).await?;
+            let previous_seen_in_progress = get_previous_seen_item(
+                user_id,
+                &input.metadata_id,
+                false,
+                Some(&create_new_in_progress.data),
+                ss,
+            )
+            .await?;
             if previous_seen_in_progress.is_some() {
                 ryot_log!(
                     debug,
