@@ -1518,6 +1518,7 @@ dependencies = [
  "common-utils",
  "database-models",
  "database-utils",
+ "dependent-collection-utils",
  "dependent-entity-utils",
  "dependent-models",
  "dependent-notification-utils",
@@ -4069,6 +4070,7 @@ name = "imdb-importer-service"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "common-models",
  "common-utils",
  "csv",
@@ -4077,6 +4079,7 @@ dependencies = [
  "importer-models",
  "itertools 0.14.0",
  "media-models",
+ "rust_decimal",
  "serde",
  "tmdb-provider",
  "tracing",
@@ -5039,6 +5042,7 @@ dependencies = [
  "database-models",
  "database-utils",
  "dependent-utility-utils",
+ "enum-models",
  "media-models",
  "nanoid",
  "rust_decimal",
@@ -8475,7 +8479,9 @@ dependencies = [
  "sea-orm",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
+ "zip",
 ]
 
 [[package]]

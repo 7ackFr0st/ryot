@@ -9,6 +9,10 @@ import getPort from "get-port";
 import type { StartedNetwork, StartedTestContainer } from "testcontainers";
 import { GenericContainer, Network, Wait } from "testcontainers";
 import { TEST_ADMIN_ACCESS_TOKEN } from "../utils";
+import {
+	type StartedMockOidcProvider,
+	startMockOidcProvider,
+} from "./mock-oidc-provider";
 
 const setupProcessLogging = (process: ChildProcess) => {
 	process.stdout?.on("data", (data) => {
@@ -30,38 +34,33 @@ export interface StartedServices {
 	caddyProcess: ChildProcess;
 	backendProcess: ChildProcess;
 	frontendProcess: ChildProcess;
-	minioContainer: StartedTestContainer;
+	storageContainer: StartedTestContainer;
 	pgContainer: StartedPostgreSqlContainer;
+	oidcProvider: StartedMockOidcProvider;
 }
 
-// `__dirname` is a CommonJS global that vitest's vite-node runtime polyfills
-// but Playwright's native ESM TypeScript runtime does not, so this is
-// derived from `import.meta.url` instead to work under both test runners.
-const MONOREPO_ROOT = path.resolve(
-	path.dirname(fileURLToPath(import.meta.url)),
-	"../../../",
-);
-const MINIO_ACCESS_KEY = "minio-admin";
-const MINIO_SECRET_KEY = "minio-admin";
+const MONOREPO_ROOT = path.resolve(__dirname, "../../../");
+const STORAGE_ACCESS_KEY = "rustfs-admin";
+const STORAGE_SECRET_KEY = "rustfs-admin";
 const TEST_BUCKET_NAME = "test-bucket";
 const DB_USER = "test-user";
 const DB_PASSWORD = "test-password";
 const DB_NAME = "test-db";
 
-async function createMinioBucket(endpoint: string) {
+async function createStorageBucket(endpoint: string) {
 	const s3Client = new S3Client({
 		endpoint,
 		region: "us-east-1",
 		forcePathStyle: true,
 		credentials: {
-			accessKeyId: MINIO_ACCESS_KEY,
-			secretAccessKey: MINIO_SECRET_KEY,
+			accessKeyId: STORAGE_ACCESS_KEY,
+			secretAccessKey: STORAGE_SECRET_KEY,
 		},
 	});
 	try {
 		await s3Client.send(new CreateBucketCommand({ Bucket: TEST_BUCKET_NAME }));
 		console.log(
-			`[Orchestrator] MinIO bucket '${TEST_BUCKET_NAME}' created successfully.`,
+			`[Orchestrator] RustFS bucket '${TEST_BUCKET_NAME}' created successfully.`,
 		);
 	} catch (err) {
 		if (
@@ -69,11 +68,11 @@ async function createMinioBucket(endpoint: string) {
 			(err as { name?: string }).name === "BucketAlreadyExists"
 		) {
 			console.log(
-				`[Orchestrator] MinIO bucket '${TEST_BUCKET_NAME}' already exists.`,
+				`[Orchestrator] RustFS bucket '${TEST_BUCKET_NAME}' already exists.`,
 			);
 		} else {
 			console.error(
-				`[Orchestrator] Error creating MinIO bucket '${TEST_BUCKET_NAME}':`,
+				`[Orchestrator] Error creating RustFS bucket '${TEST_BUCKET_NAME}':`,
 				err,
 			);
 			throw err;
@@ -83,25 +82,23 @@ async function createMinioBucket(endpoint: string) {
 
 async function startFrontendProcess(
 	frontendPort: number,
+	backendPort: number,
 ): Promise<ChildProcess> {
 	return new Promise((resolve) => {
 		console.log(
 			`[Orchestrator] Starting frontend process on port ${frontendPort}...`,
 		);
 
-		const frontendProcess = spawn(
-			"yarn",
-			["react-router-serve", "./build/server/index.js"],
-			{
-				stdio: ["ignore", "pipe", "pipe"],
-				cwd: path.join(MONOREPO_ROOT, "apps/frontend"),
-				env: { ...process.env, PORT: frontendPort.toString() },
-				// On Windows, `yarn` resolves to a `.cmd` shim rather than a directly
-				// executable file, which `child_process.spawn` cannot launch without
-				// going through a shell (it fails with `ENOENT` otherwise).
-				shell: process.platform === "win32",
+		const frontendProcess = spawn("node", ["./server.mjs"], {
+			stdio: ["ignore", "pipe", "pipe"],
+			cwd: path.join(MONOREPO_ROOT, "apps/frontend"),
+			env: {
+				...process.env,
+				FRONTEND_URL: "",
+				PORT: frontendPort.toString(),
+				API_URL: `http://127.0.0.1:${backendPort}`,
 			},
-		);
+		});
 
 		setupProcessLogging(frontendProcess);
 
@@ -185,7 +182,9 @@ async function startCaddyProcess(
 async function startBackendProcess(
 	dbUrl: string,
 	backendPort: number,
-	minioEndpoint: string,
+	storageEndpoint: string,
+	frontendUrl: string,
+	oidcProvider: StartedMockOidcProvider,
 ): Promise<ChildProcess> {
 	return new Promise((resolve) => {
 		console.log(
@@ -193,12 +192,18 @@ async function startBackendProcess(
 		);
 		const backendEnv = {
 			DATABASE_URL: dbUrl,
-			FILE_STORAGE_S3_URL: minioEndpoint,
+			FILE_STORAGE_S3_URL: storageEndpoint,
 			SERVER_BACKEND_PORT: backendPort.toString(),
+			SERVER_OIDC_CLIENT_ID: oidcProvider.clientId,
+			SERVER_OIDC_CLIENT_SECRET: oidcProvider.clientSecret,
+			SERVER_OIDC_ISSUER_URL: oidcProvider.issuerUrl,
 			FILE_STORAGE_S3_BUCKET_NAME: TEST_BUCKET_NAME,
-			FILE_STORAGE_S3_ACCESS_KEY_ID: MINIO_ACCESS_KEY,
+			FILE_STORAGE_S3_ACCESS_KEY_ID: STORAGE_ACCESS_KEY,
 			SERVER_ADMIN_ACCESS_TOKEN: TEST_ADMIN_ACCESS_TOKEN,
-			FILE_STORAGE_S3_SECRET_ACCESS_KEY: MINIO_SECRET_KEY,
+			FILE_STORAGE_S3_SECRET_ACCESS_KEY: STORAGE_SECRET_KEY,
+			FRONTEND_URL: frontendUrl,
+			USERS_ALLOW_REGISTRATION: "true",
+			USERS_DISABLE_LOCAL_AUTH: "false",
 		};
 
 		const backendProcess = spawn(
@@ -224,9 +229,10 @@ async function startBackendProcess(
 
 export async function startAllServices() {
 	const network = await new Network().start();
+	const storageImage = process.env.TEST_S3_IMAGE || "rustfs/rustfs:latest";
 
 	console.log("[Orchestrator] Starting containers in parallel...");
-	const [pgContainer, minioContainer] = await Promise.all([
+	const [pgContainer, storageContainer] = await Promise.all([
 		new PostgreSqlContainer("postgres:16-alpine")
 			.withDatabase(DB_NAME)
 			.withUsername(DB_USER)
@@ -237,27 +243,27 @@ export async function startAllServices() {
 				Wait.forLogMessage("database system is ready to accept connections", 2),
 			)
 			.start(),
-		new GenericContainer("minio/minio:latest")
+		new GenericContainer(storageImage)
 			.withEnvironment({
-				MINIO_ROOT_USER: MINIO_ACCESS_KEY,
-				MINIO_ROOT_PASSWORD: MINIO_SECRET_KEY,
+				RUSTFS_ACCESS_KEY: STORAGE_ACCESS_KEY,
+				RUSTFS_SECRET_KEY: STORAGE_SECRET_KEY,
 			})
-			.withCommand(["server", "/data", "--console-address", ":9090"])
+			.withCommand(["rustfs"])
 			.withNetwork(network)
-			.withNetworkAliases("minio")
-			.withExposedPorts(9000, 9090)
-			.withWaitStrategy(Wait.forHttp("/minio/health/live", 9000))
+			.withNetworkAliases("rustfs")
+			.withExposedPorts(9000)
+			.withWaitStrategy(Wait.forHttp("/health/ready", 9000))
 			.start(),
 	]);
-	console.log("[Orchestrator] PostgreSQL and MinIO containers started.");
+	console.log("[Orchestrator] PostgreSQL and RustFS containers started.");
 
 	const dbHost = pgContainer.getHost();
 	const dbPort = pgContainer.getPort();
-	const minioHost = minioContainer.getHost();
-	const minioPort = minioContainer.getMappedPort(9000);
-	const minioExternalEndpoint = `http://${minioHost}:${minioPort}`;
+	const storageHost = storageContainer.getHost();
+	const storagePort = storageContainer.getMappedPort(9000);
+	const storageExternalEndpoint = `http://${storageHost}:${storagePort}`;
 
-	await createMinioBucket(minioExternalEndpoint);
+	await createStorageBucket(storageExternalEndpoint);
 
 	const [freeBackendPort, freeFrontendPort, freeCaddyPort] = await Promise.all([
 		getPort(),
@@ -265,13 +271,21 @@ export async function startAllServices() {
 		getPort(),
 	]);
 	const backendDbUrl = `postgres://${DB_USER}:${DB_PASSWORD}@${dbHost}:${dbPort}/${DB_NAME}`;
+	const caddyBaseUrl = `http://127.0.0.1:${freeCaddyPort}`;
+	const oidcProvider = await startMockOidcProvider();
 
 	console.log(
 		"[Orchestrator] Starting backend and frontend processes in parallel...",
 	);
 	const [backendProcess, frontendProcess] = await Promise.all([
-		startBackendProcess(backendDbUrl, freeBackendPort, minioExternalEndpoint),
-		startFrontendProcess(freeFrontendPort),
+		startBackendProcess(
+			backendDbUrl,
+			freeBackendPort,
+			storageExternalEndpoint,
+			caddyBaseUrl,
+			oidcProvider,
+		),
+		startFrontendProcess(freeFrontendPort, freeBackendPort),
 	]);
 
 	console.log("[Orchestrator] Starting Caddy process...");
@@ -281,16 +295,15 @@ export async function startAllServices() {
 		freeFrontendPort,
 	);
 
-	const caddyBaseUrl = `http://127.0.0.1:${freeCaddyPort}`;
-
 	return {
 		network,
 		pgContainer,
 		caddyProcess,
 		caddyBaseUrl,
-		minioContainer,
+		storageContainer,
 		backendProcess,
 		frontendProcess,
+		oidcProvider,
 	};
 }
 
@@ -361,12 +374,12 @@ export async function stopAllServices(services: StartedServices | undefined) {
 		}
 	};
 
-	const stopMinio = async () => {
+	const stopStorage = async () => {
 		try {
-			await services.minioContainer.stop();
-			console.log("[Orchestrator] MinIO container stopped.");
+			await services.storageContainer.stop();
+			console.log("[Orchestrator] RustFS container stopped.");
 		} catch (e) {
-			console.error("Error stopping MinIO container:", e);
+			console.error("Error stopping RustFS container:", e);
 		}
 	};
 
@@ -376,6 +389,15 @@ export async function stopAllServices(services: StartedServices | undefined) {
 			console.log("[Orchestrator] PostgreSQL container stopped.");
 		} catch (e) {
 			console.error("Error stopping PostgreSQL container:", e);
+		}
+	};
+
+	const stopOidcProvider = async () => {
+		try {
+			await services.oidcProvider.close();
+			console.log("[Orchestrator] Mock OIDC provider stopped.");
+		} catch (error) {
+			console.error("Error stopping mock OIDC provider:", error);
 		}
 	};
 
@@ -392,8 +414,9 @@ export async function stopAllServices(services: StartedServices | undefined) {
 		stopCaddy(),
 		stopFrontend(),
 		stopBackend(),
-		stopMinio(),
+		stopStorage(),
 		stopPostgres(),
+		stopOidcProvider(),
 	]);
 	await stopNetwork();
 

@@ -1,4 +1,4 @@
-ARG NODE_BASE_IMAGE=node:24.4.0-bookworm-slim
+ARG NODE_BASE_IMAGE=node:24.22.1-bookworm-slim
 
 FROM $NODE_BASE_IMAGE AS frontend-build-base
 WORKDIR /app
@@ -45,6 +45,7 @@ USER ryot
 COPY ci/Caddyfile /etc/caddy/Caddyfile
 COPY --from=frontend-builder --chown=ryot:ryot /app/apps/frontend/node_modules ./node_modules
 COPY --from=frontend-builder --chown=ryot:ryot /app/apps/frontend/package.json ./package.json
+COPY --from=frontend-builder --chown=ryot:ryot /app/apps/frontend/server.mjs ./server.mjs
 COPY --from=frontend-builder --chown=ryot:ryot /app/apps/frontend/build ./build
 COPY --from=artifact --chown=ryot:ryot /artifact/backend /usr/local/bin/backend
 RUN ldd /usr/local/bin/backend 2>&1 \

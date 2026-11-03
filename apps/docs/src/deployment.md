@@ -7,6 +7,16 @@ import variables from "./variables";
 The easiest way to deploy Ryot is using [docker compose](./index.md#installation). Here
 is a non-exhaustive set of guides to deploy Ryot to alternative platforms.
 
+## Reverse proxies
+
+Ryot does not require `FRONTEND_URL` for proxy form submissions. Configure your
+reverse proxy to forward the public `Host` header and `X-Forwarded-Proto`. The
+bundled Caddy proxy trusts upstream proxies on loopback and private networks by
+default. For a public proxy, set `CADDY_TRUSTED_PROXIES` to a space-separated
+replacement list of trusted proxy IPs or CIDRs, for example
+`private_ranges 203.0.113.10/32`. Trusted proxies must overwrite client-supplied
+forwarding headers. Use narrow trusted ranges on shared or untrusted networks.
+
 ## Railway
 
 1. Click on "+ New Project" on your dashboard and select "Empty project".
@@ -134,3 +144,29 @@ with the URL chosen.
 The instance will be available under your newly created URL via HTTPS if it
 is enabled. You can then proceed with creating your first user via the web
 interface's registration page.
+
+## Cloudzy
+
+[![Deploy Ryot on Cloudzy](https://design.cloudzy.com/logo/cloudzy-light-marketplace-badge-147x32.svg)](https://cloudzy.com/marketplace/ryot/)
+
+Deploy Ryot on a Cloudzy VPS using the one-click installer. Cloudzy provides a preconfigured Ryot self-hosted tracker on Ubuntu Server 24.04 LTS using Docker Compose, so you can get started without setting up the server manually.
+
+See the [Ryot one-click deployment page on the Cloudzy Marketplace](https://cloudzy.com/marketplace/ryot/) for Docker management commands, configuration files, and Cloudzy-specific installation paths.
+
+## Pethost
+
+[Pethost](https://pethost.dev) has a one-click template for Ryot:
+[Deploy Ryot on Pethost](https://pethost.dev/templates/ryot/).
+
+The template starts Ryot and PostgreSQL, generates `SERVER_ADMIN_ACCESS_TOKEN` and the
+database password, sets `FRONTEND_URL`, and serves Ryot over HTTPS at an address under your
+account's domain.
+
+Open the address and create your first user via the web interface's registration page. For
+a private instance, then add `USERS_ALLOW_REGISTRATION=false` to the project's `.env`, which
+the template's compose file passes to the `ryot` service, and deploy again to stop new
+sign-ups.
+
+The database's volume is kept across deploys and is part of the nightly backups. To deploy
+the [docker compose](./index.md#installation) file from a terminal instead, see the
+[step-by-step guide](https://pethost.dev/blog/self-host-ryot/).

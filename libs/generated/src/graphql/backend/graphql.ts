@@ -413,6 +413,12 @@ export type ComicBookSpecificsInput = {
   pageCount?: InputMaybe<Scalars['Int']['input']>;
 };
 
+export type CompleteOidcLoginInput = {
+  browserToken: Scalars['String']['input'];
+  code: Scalars['String']['input'];
+  state: Scalars['String']['input'];
+};
+
 export type CoreDetails = {
   backendErrors: Array<BackendError>;
   disableTelemetry: Scalars['Boolean']['output'];
@@ -711,6 +717,8 @@ export type DeployStrongAppImportInput = {
 };
 
 export type DeployTraktImportInput = {
+  /** Import from a Trakt data export. */
+  export?: InputMaybe<DeployPathImportInput>;
   /** Import from a public Trakt list. */
   list?: InputMaybe<DeployTraktImportListInput>;
   /** Import from a public Trakt user. */
@@ -1714,6 +1722,7 @@ export type MutationRoot = {
    * only if a match was found and applied.
    */
   autoReidentifyMetadataViaTmdb: Scalars['Boolean']['output'];
+  completeOidcLogin: LoginResult;
   /** Complete two-factor authentication setup by verifying the TOTP code. */
   completeTwoFactorSetup: UserTwoFactorBackupCodesResponse;
   /** Create or edit an access link. */
@@ -1878,6 +1887,11 @@ export type MutationRoot = {
   updateUserWorkoutAttributes: Scalars['Boolean']['output'];
   /** Verify a two-factor authentication code (TOTP or backup code). */
   verifyTwoFactor: VerifyTwoFactorResult;
+};
+
+
+export type MutationRootCompleteOidcLoginArgs = {
+  input: CompleteOidcLoginInput;
 };
 
 
@@ -2221,9 +2235,9 @@ export enum NotificationPlatformLot {
   Telegram = 'TELEGRAM'
 }
 
-export type OidcTokenOutput = {
-  email: Scalars['String']['output'];
-  subject: Scalars['String']['output'];
+export type OidcAuthorizationResponse = {
+  authorizationUrl: Scalars['String']['output'];
+  browserToken: Scalars['String']['output'];
 };
 
 export type OidcUserInput = {
@@ -2409,9 +2423,7 @@ export type QueryRoot = {
   /** Get details about a genre present in the database. */
   genreDetails: CachedGenreDetailsResponse;
   /** Get an authorization URL using the configured OIDC client. */
-  getOidcRedirectUrl: Scalars['String']['output'];
-  /** Get an access token using the configured OIDC client. */
-  getOidcToken: OidcTokenOutput;
+  getOidcRedirectUrl: OidcAuthorizationResponse;
   /** Get a presigned URL (valid for 90 minutes) for a given key. */
   getPresignedS3Url: Scalars['String']['output'];
   /** Get presigned URLs (valid for 90 minutes) for the given keys, in one round-trip. */
@@ -2519,11 +2531,6 @@ export type QueryRootFilterPresetsArgs = {
 
 export type QueryRootGenreDetailsArgs = {
   input: GenreDetailsInput;
-};
-
-
-export type QueryRootGetOidcTokenArgs = {
-  code: Scalars['String']['input'];
 };
 
 
@@ -4287,10 +4294,21 @@ export type GenerateLogDownloadUrlMutationVariables = Exact<{ [key: string]: nev
 
 export type GenerateLogDownloadUrlMutation = { generateLogDownloadUrl: string };
 
+export type CompleteOidcLoginMutationVariables = Exact<{
+  input: CompleteOidcLoginInput;
+}>;
+
+
+export type CompleteOidcLoginMutation = { completeOidcLogin:
+    | { __typename: 'ApiKeyResponse', apiKey: string }
+    | { __typename: 'LoginError', error: LoginErrorVariant }
+    | { __typename: 'StringIdObject', id: string }
+   };
+
 export type GetOidcRedirectUrlQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type GetOidcRedirectUrlQuery = { getOidcRedirectUrl: string };
+export type GetOidcRedirectUrlQuery = { getOidcRedirectUrl: { authorizationUrl: string, browserToken: string } };
 
 export type UserByOidcIssuerIdQueryVariables = Exact<{
   oidcIssuerId: Scalars['String']['input'];
@@ -4298,13 +4316,6 @@ export type UserByOidcIssuerIdQueryVariables = Exact<{
 
 
 export type UserByOidcIssuerIdQuery = { userByOidcIssuerId?: string | null };
-
-export type GetOidcTokenQueryVariables = Exact<{
-  code: Scalars['String']['input'];
-}>;
-
-
-export type GetOidcTokenQuery = { getOidcToken: { email: string, subject: string } };
 
 export type GetPresignedS3UrlQueryVariables = Exact<{
   key: Scalars['String']['input'];
@@ -4760,9 +4771,9 @@ export const CreateFilterPresetDocument = {"kind":"Document","definitions":[{"ki
 export const DeleteFilterPresetDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DeleteFilterPreset"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"filterPresetId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"deleteFilterPreset"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"filterPresetId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"filterPresetId"}}}]}]}}]} as unknown as DocumentNode<DeleteFilterPresetMutation, DeleteFilterPresetMutationVariables>;
 export const UpdateFilterPresetLastUsedDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateFilterPresetLastUsed"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"filterPresetId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateFilterPresetLastUsed"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"filterPresetId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"filterPresetId"}}}]}]}}]} as unknown as DocumentNode<UpdateFilterPresetLastUsedMutation, UpdateFilterPresetLastUsedMutationVariables>;
 export const GenerateLogDownloadUrlDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"GenerateLogDownloadUrl"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"generateLogDownloadUrl"}}]}}]} as unknown as DocumentNode<GenerateLogDownloadUrlMutation, GenerateLogDownloadUrlMutationVariables>;
-export const GetOidcRedirectUrlDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GetOidcRedirectUrl"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"getOidcRedirectUrl"}}]}}]} as unknown as DocumentNode<GetOidcRedirectUrlQuery, GetOidcRedirectUrlQueryVariables>;
+export const CompleteOidcLoginDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CompleteOidcLogin"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CompleteOidcLoginInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"completeOidcLogin"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"ApiKeyResponse"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"apiKey"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"LoginError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"error"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"StringIdObject"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}}]}}]}}]}}]} as unknown as DocumentNode<CompleteOidcLoginMutation, CompleteOidcLoginMutationVariables>;
+export const GetOidcRedirectUrlDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GetOidcRedirectUrl"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"getOidcRedirectUrl"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"authorizationUrl"}},{"kind":"Field","name":{"kind":"Name","value":"browserToken"}}]}}]}}]} as unknown as DocumentNode<GetOidcRedirectUrlQuery, GetOidcRedirectUrlQueryVariables>;
 export const UserByOidcIssuerIdDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"UserByOidcIssuerId"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"oidcIssuerId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"userByOidcIssuerId"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"oidcIssuerId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"oidcIssuerId"}}}]}]}}]} as unknown as DocumentNode<UserByOidcIssuerIdQuery, UserByOidcIssuerIdQueryVariables>;
-export const GetOidcTokenDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GetOidcToken"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"code"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"getOidcToken"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"code"},"value":{"kind":"Variable","name":{"kind":"Name","value":"code"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"subject"}}]}}]}}]} as unknown as DocumentNode<GetOidcTokenQuery, GetOidcTokenQueryVariables>;
 export const GetPresignedS3UrlDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GetPresignedS3Url"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"key"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"getPresignedS3Url"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"key"},"value":{"kind":"Variable","name":{"kind":"Name","value":"key"}}}]}]}}]} as unknown as DocumentNode<GetPresignedS3UrlQuery, GetPresignedS3UrlQueryVariables>;
 export const GetPresignedS3UrlsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GetPresignedS3Urls"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"keys"}},"type":{"kind":"NonNullType","type":{"kind":"ListType","type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"getPresignedS3Urls"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"keys"},"value":{"kind":"Variable","name":{"kind":"Name","value":"keys"}}}]}]}}]} as unknown as DocumentNode<GetPresignedS3UrlsQuery, GetPresignedS3UrlsQueryVariables>;
 export const PartialMetadataListDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PartialMetadataList"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"partialMetadataList"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"title"}},{"kind":"Field","name":{"kind":"Name","value":"lot"}},{"kind":"Field","name":{"kind":"Name","value":"source"}},{"kind":"Field","name":{"kind":"Name","value":"identifier"}}]}}]}}]} as unknown as DocumentNode<PartialMetadataListQuery, PartialMetadataListQueryVariables>;

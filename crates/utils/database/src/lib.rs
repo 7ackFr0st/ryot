@@ -9,7 +9,7 @@ use database_models::{
     prelude::{
         AccessLink, CollectionEntityMembership, Review, Seen, User, Workout, WorkoutTemplate,
     },
-    review, seen, user, user_to_entity, workout,
+    review, seen, user, user_to_entity, workout, workout_template,
 };
 use dependent_models::{
     ApplicationCacheKey, ApplicationCacheValue, CachedResponse, CollectionToEntityDetails,
@@ -43,6 +43,21 @@ pub async fn revoke_access_link(
     .exec(&ss.db)
     .await?;
     Ok(true)
+}
+
+pub async fn revoke_user_access_link(
+    user_id: &str,
+    access_link_id: String,
+    ss: &Arc<SupportingService>,
+) -> Result<bool> {
+    let Some(link) = AccessLink::find_by_id(access_link_id)
+        .filter(access_link::Column::UserId.eq(user_id))
+        .one(&ss.db)
+        .await?
+    else {
+        bail!("Access link not found");
+    };
+    revoke_access_link(link.id, ss).await
 }
 
 pub fn apply_columns_search<D>(
@@ -225,6 +240,13 @@ pub async fn user_workout_template_details(
     workout_template_id: String,
     ss: &Arc<SupportingService>,
 ) -> Result<CachedResponse<UserWorkoutTemplateDetails>> {
+    let Some(details) = WorkoutTemplate::find_by_id(workout_template_id.clone())
+        .filter(workout_template::Column::UserId.eq(user_id))
+        .one(&ss.db)
+        .await?
+    else {
+        bail!("Workout template with the given ID could not be found for this user.");
+    };
     cache_service::get_or_set_with_callback(
         ss,
         ApplicationCacheKey::UserWorkoutTemplateDetails(UserLevelCacheKey {
@@ -233,12 +255,6 @@ pub async fn user_workout_template_details(
         }),
         |f| ApplicationCacheValue::UserWorkoutTemplateDetails(Box::new(f)),
         || async {
-            let maybe_template = WorkoutTemplate::find_by_id(workout_template_id.clone())
-                .one(&ss.db)
-                .await?;
-            let Some(details) = maybe_template else {
-                bail!("Workout template with the given ID could not be found.");
-            };
             let collections = entity_in_collections_with_details(
                 user_id,
                 &workout_template_id,
