@@ -3,15 +3,17 @@ use std::sync::Arc;
 use anyhow::{Context, Result, anyhow, bail};
 use common_models::StringIdObject;
 use common_utils::ryot_log;
-use dependent_models::{ImportCompletedItem, ImportOrExportMetadataItem, ImportResult};
+use dependent_models::{
+    ApplicationCacheKey, ApplicationCacheValue, ImportCompletedItem, ImportOrExportMetadataItem,
+    ImportResult,
+};
+use dependent_provider_utils::get_tmdb_non_media_service;
 use enum_models::{MediaLot, MediaSource};
 use media_models::ImportOrExportMetadataItemSeen;
 use regex::Regex;
 use rust_decimal::{Decimal, dec};
 use serde::{Deserialize, Serialize};
 use supporting_service::SupportingService;
-
-use crate::utils::get_show_by_episode_identifier;
 
 mod models {
     use super::*;
@@ -67,6 +69,45 @@ fn get_tmdb_identifier(guids: &[StringIdObject]) -> Result<&str> {
         .ok_or_else(|| anyhow!("No TMDb ID associated with this media"))
 }
 
+fn get_episode_external_ids(guids: &[StringIdObject]) -> Vec<(&str, &str)> {
+    [("imdb://", "imdb_id"), ("tvdb://", "tvdb_id")]
+        .into_iter()
+        .filter_map(|(prefix, source)| {
+            guids
+                .iter()
+                .find_map(|g| g.id.strip_prefix(prefix))
+                .map(|id| (id, source))
+        })
+        .collect()
+}
+
+// Plex only sends the IDs of an episode, so its show is looked up on TMDb through the
+// IMDb or TVDB ID of the episode, or else by title and the TMDb ID of the episode.
+async fn find_show_on_tmdb(
+    episode_id: &str,
+    series_name: &str,
+    metadata: &models::PlexWebhookMetadataPayload,
+    ss: &Arc<SupportingService>,
+) -> Result<Option<String>> {
+    let tmdb_service = get_tmdb_non_media_service(ss).await?;
+    for (external_id, external_source) in get_episode_external_ids(&metadata.guids) {
+        let show_id = tmdb_service
+            .find_show_by_episode_external_id(external_id, external_source)
+            .await
+            .with_context(|| format!("Could not look up episode {external_id} on TMDb"))?;
+        if show_id.is_some() {
+            return Ok(show_id);
+        }
+    }
+    let Some(season_number) = metadata.season_number else {
+        return Ok(None);
+    };
+    tmdb_service
+        .find_show_by_episode_title(series_name, season_number, episode_id)
+        .await
+        .with_context(|| format!("Could not look up show {series_name:?} on TMDb"))
+}
+
 async fn get_media_info<'a>(
     identifier: &'a str,
     ss: &Arc<SupportingService>,
@@ -76,18 +117,32 @@ async fn get_media_info<'a>(
         "movie" => Ok((identifier.to_owned(), MediaLot::Movie)),
         "episode" => {
             let series_name = metadata.show_name.as_ref().context("Show name missing")?;
-            let db_show = get_show_by_episode_identifier(series_name, identifier, ss).await?;
-            Ok((db_show.identifier, MediaLot::Show))
+            // Plex sends several events per episode, so the lookup is cached, misses included.
+            let show_id = cache_service::get_or_set_with_callback(
+                ss,
+                ApplicationCacheKey::TmdbEpisodeShowId(identifier.to_owned()),
+                ApplicationCacheValue::TmdbEpisodeShowId,
+                || find_show_on_tmdb(identifier, series_name, metadata, ss),
+            )
+            .await?
+            .response
+            .ok_or_else(|| {
+                anyhow!("No show found with Series {series_name:#?} and Episode {identifier:#?}")
+            })?;
+            Ok((show_id, MediaLot::Show))
         }
         _ => bail!("Only movies and shows supported"),
     }
 }
 
-fn calculate_progress(payload: &models::PlexWebhookPayload) -> Result<Decimal> {
+fn calculate_progress(payload: &models::PlexWebhookPayload) -> Option<Decimal> {
+    if payload.event_type == "media.scrobble" {
+        return Some(dec!(100));
+    }
     match payload.metadata.view_offset {
-        Some(offset) => Ok(offset / payload.metadata.duration * dec!(100)),
-        None if payload.event_type == "media.scrobble" => Ok(dec!(100)),
-        None => bail!("No position associated with this media"),
+        Some(offset) => Some(offset / payload.metadata.duration * dec!(100)),
+        None if payload.event_type == "media.play" => Some(dec!(0)),
+        None => None,
     }
 }
 
@@ -126,9 +181,16 @@ pub async fn sink_progress(
         }
     };
 
+    let Some(progress) = calculate_progress(&payload) else {
+        ryot_log!(
+            debug,
+            "Ignoring Plex {:?} event without a position",
+            payload.event_type
+        );
+        return Ok(None);
+    };
     let identifier = get_tmdb_identifier(&payload.metadata.guids)?;
     let (identifier, lot) = get_media_info(identifier, ss, &payload.metadata).await?;
-    let progress = calculate_progress(&payload)?;
 
     Ok(Some(ImportResult {
         completed: vec![ImportCompletedItem::Metadata(ImportOrExportMetadataItem {
@@ -146,4 +208,76 @@ pub async fn sink_progress(
         })],
         ..Default::default()
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn episode_payload_exposes_external_ids_for_show_lookup() {
+        let payload = r#"{"event":"media.scrobble","user":true,"owner":false,"Account":{"title":"alice"},"Metadata":{"type":"episode","grandparentTitle":"Harry Hole","parentIndex":1,"index":1,"duration":3724736,"Guid":[{"id":"imdb://tt31841417"},{"id":"tmdb://5221957"},{"id":"tvdb://10394732"}]}}"#;
+        let payload = parse_payload(payload).unwrap();
+        assert_eq!(
+            get_tmdb_identifier(&payload.metadata.guids).unwrap(),
+            "5221957"
+        );
+        assert_eq!(
+            get_episode_external_ids(&payload.metadata.guids),
+            vec![("tt31841417", "imdb_id"), ("10394732", "tvdb_id")]
+        );
+    }
+
+    #[test]
+    fn episode_without_external_ids_has_no_show_lookup() {
+        let guids = vec![StringIdObject {
+            id: "tmdb://5221957".to_owned(),
+        }];
+        assert!(get_episode_external_ids(&guids).is_empty());
+    }
+
+    fn payload_for(event: &str, view_offset: Option<u32>) -> models::PlexWebhookPayload {
+        let offset = view_offset
+            .map(|o| format!(r#""viewOffset":{o},"#))
+            .unwrap_or_default();
+        let raw = format!(
+            r#"{{"event":"{event}","user":true,"owner":false,"Account":{{"title":"alice"}},"Metadata":{{"type":"episode",{offset}"duration":1000,"Guid":[]}}}}"#
+        );
+        parse_payload(&raw).unwrap()
+    }
+
+    #[test]
+    fn scrobble_is_always_complete() {
+        assert_eq!(
+            calculate_progress(&payload_for("media.scrobble", None)),
+            Some(dec!(100))
+        );
+        assert_eq!(
+            calculate_progress(&payload_for("media.scrobble", Some(900))),
+            Some(dec!(100))
+        );
+    }
+
+    #[test]
+    fn play_without_offset_starts_at_zero() {
+        assert_eq!(
+            calculate_progress(&payload_for("media.play", None)),
+            Some(dec!(0))
+        );
+    }
+
+    #[test]
+    fn offset_is_converted_to_percentage() {
+        assert_eq!(
+            calculate_progress(&payload_for("media.pause", Some(250))),
+            Some(dec!(25))
+        );
+    }
+
+    #[test]
+    fn stop_pause_resume_without_offset_are_ignored() {
+        for event in ["media.stop", "media.pause", "media.resume"] {
+            assert_eq!(calculate_progress(&payload_for(event, None)), None);
+        }
+    }
 }

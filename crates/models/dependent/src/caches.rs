@@ -56,6 +56,20 @@ pub struct UserPasswordChangeSessionValue {
     pub user_id: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OidcAuthorizationSessionValue {
+    pub nonce: String,
+    pub browser_token: String,
+    pub pkce_verifier: String,
+}
+
+#[skip_serializing_none]
+#[derive(Clone, Hash, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EpisodeExternalIdsCacheInput {
+    pub imdb_id: Option<String>,
+    pub tvdb_id: Option<String>,
+}
+
 #[skip_serializing_none]
 #[derive(Clone, Hash, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserCurrentlyWatchingCacheValue {
@@ -96,6 +110,7 @@ pub enum ApplicationCacheKey {
     SpotifyAccessToken,
     ListennotesSettings,
     UserSession(String),
+    OidcAuthorizationSession(String),
     TrendingMetadataIds,
     UserCurrentlyWatching(UserLevelCacheKey<()>),
     PersonDetails(String),
@@ -106,6 +121,9 @@ pub enum ApplicationCacheKey {
     CollectionRecommendations(String),
     MetadataLookup(MetadataLookupCacheInput),
     TmdbMultiSearch(MetadataLookupCacheInput),
+    TmdbEpisodeShowId(String),
+    TvdbEpisodeShowId(String),
+    TmdbEpisodeShowIdByExternalIds(EpisodeExternalIdsCacheInput),
     UserTwoFactorSetup(UserLevelCacheKey<()>),
     UserCollectionsList(UserLevelCacheKey<()>),
     UserPersonDetails(UserLevelCacheKey<String>),
@@ -154,6 +172,7 @@ pub enum ApplicationCacheValue {
     UserAnalytics(UserAnalytics),
     CoreDetails(Box<CoreDetails>),
     UserSession(UserSessionValue),
+    OidcAuthorizationSession(OidcAuthorizationSessionValue),
     LogDownloadToken(EmptyCacheValue),
     UserCurrentlyWatching(UserCurrentlyWatchingCacheValue),
     PeopleSearch(PeopleSearchResponse),
@@ -176,6 +195,9 @@ pub enum ApplicationCacheValue {
     UserAnalyticsParameters(ApplicationDateRange),
     UserMetadataDetails(Box<UserMetadataDetails>),
     TmdbMultiSearch(Vec<TmdbMetadataLookupResult>),
+    TmdbEpisodeShowId(Option<String>),
+    TvdbEpisodeShowId(Option<String>),
+    TmdbEpisodeShowIdByExternalIds(String),
     MetadataGroupDetails(Box<MetadataGroupDetails>),
     UserTwoFactorSetup(UserTwoFactorSetupCacheValue),
     TrendingMetadataIds(TrendingMetadataIdsResponse),

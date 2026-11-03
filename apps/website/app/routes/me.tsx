@@ -5,7 +5,6 @@ import dayjs from "dayjs";
 import { eq } from "drizzle-orm";
 import { useEffect, useState } from "react";
 import { data, Form, redirect, useFetcher, useLoaderData } from "react-router";
-import { toast } from "sonner";
 import { match } from "ts-pattern";
 import { withQuery } from "ufo";
 import {
@@ -83,12 +82,12 @@ const getAllSubscriptionsForCustomer = async (customerId: string) => {
 const getAllPolarSubscriptionsForCustomer = async (customerId: string) => {
 	const allSubscriptions = [];
 	const polar = getPolarClient();
-	const subscriptionsIterator = await polar.subscriptions.list({
-		externalCustomerId: customerId,
+	const subscriptionsIterator = polar.subscriptions.iterList({
+		external_customer_id: customerId,
 	});
 
-	for await (const page of subscriptionsIterator)
-		allSubscriptions.push(...page.result.items);
+	for await (const subscription of subscriptionsIterator)
+		allSubscriptions.push(subscription);
 
 	return allSubscriptions;
 };
@@ -154,7 +153,7 @@ export const action = async ({ request }: Route.ActionArgs) => {
 				});
 
 				const polar = getPolarClient();
-				await polar.subscriptions.revoke({ id: activeSubscription.id });
+				await polar.subscriptions.revoke(activeSubscription.id);
 				setCancellation(customer.id);
 
 				return data({
@@ -216,9 +215,9 @@ export const action = async ({ request }: Route.ActionArgs) => {
 			const frontendUrl = serverVariables.FRONTEND_URL;
 			const checkout = await polar.checkouts.create({
 				products: [productId],
-				customerEmail: customer.email,
-				successUrl: `${frontendUrl}/me`,
-				externalCustomerId: customer.id,
+				customer_email: customer.email,
+				external_customer_id: customer.id,
+				success_url: `${frontendUrl}/me`,
 			});
 
 			return redirect(checkout.url);
@@ -282,7 +281,7 @@ export default function Index() {
 					role="alert"
 					className="mx-auto mt-6 w-full max-w-md rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
 				>
-					Cancellation in progress. This can take a minute to sync.
+					Cancellation in progress. This can take a minute to sync. Please refresh the page after a minute to see the updated status.
 				</div>
 			) : null}
 			{loaderData.isPurchaseInProgress ? (
@@ -290,7 +289,7 @@ export default function Index() {
 					role="alert"
 					className="mx-auto mt-6 w-full max-w-md rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900"
 				>
-					Purchase in progress. This can take a minute to sync.
+					Purchase in progress. This can take a minute to sync. Please refresh the page after a minute to see the updated status.
 				</div>
 			) : null}
 			{!loaderData.customerDetails.hasCancelled &&
@@ -368,34 +367,15 @@ export default function Index() {
 				<Pricing
 					isLoggedIn
 					prices={loaderData.prices}
-					onClick={(priceId) => {
+					onClick={(priceId, productType, planType) => {
 						if (loaderData.paymentProvider === "polar") {
-							let planType = "";
-							let productType = "";
-							const prices = loaderData.prices;
-
-							for (const product of prices) {
-								const matchingPrice = product.prices.find(
-									(p) => p.priceId === priceId,
-								);
-								if (matchingPrice) {
-									productType = product.type;
-									planType = matchingPrice.name;
-									break;
-								}
-							}
-
-							if (productType && planType) {
-								const formData = new FormData();
-								formData.append("planType", planType);
-								formData.append("productType", productType);
-								fetcher.submit(formData, {
-									method: "POST",
-									action: withQuery(".", { intent: "checkoutPolar" }),
-								});
-							} else {
-								toast.error("Unable to determine product for checkout.");
-							}
+							const formData = new FormData();
+							formData.append("planType", planType);
+							formData.append("productType", productType);
+							fetcher.submit(formData, {
+								method: "POST",
+								action: withQuery(".", { intent: "checkoutPolar" }),
+							});
 							return;
 						}
 
