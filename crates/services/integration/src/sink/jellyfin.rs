@@ -191,14 +191,28 @@ pub async fn sink_progress(
     user_id: &str,
     ss: &Arc<SupportingService>,
 ) -> Result<Option<ImportResult>> {
-    if serde_json::from_str::<Value>(&payload).is_ok_and(|value| has_notification_type(&value)) {
-        return jellyfin_official::sink_progress_official(
+    if let Some(notification_type) = serde_json::from_str::<Value>(&payload)
+        .ok()
+        .filter(has_notification_type)
+        .map(|value| official_notification_type(&value))
+    {
+        let result = jellyfin_official::sink_progress_official(
             payload,
             jellyfin_sink_username,
             jellyfin_sink_metadata_provider,
             ss,
         )
-        .await;
+        .await?;
+        if let (Some(event), Some(result)) = (
+            notification_type.as_deref().and_then(official_to_watching_event),
+            result.as_ref(),
+        ) && let Some((identifier, source, lot, season, episode)) = watching_target(result)
+        {
+            update_currently_watching(user_id, ss, Some(event), &identifier, source, lot, season, episode)
+                .await
+                .trace_ok();
+        }
+        return Ok(result);
     }
     sink_progress_unofficial_inner(
         payload,
@@ -207,6 +221,43 @@ pub async fn sink_progress(
         Some((user_id, ss)),
     )
     .await
+}
+
+/// Read `NotificationType` from an official-plugin payload.
+fn official_notification_type(value: &Value) -> Option<String> {
+    value
+        .as_object()
+        .and_then(|m| get_ci(m, "NotificationType"))
+        .and_then(as_string)
+}
+
+/// Map official-plugin notification types onto the event names that
+/// `update_currently_watching` understands.
+fn official_to_watching_event(notification_type: &str) -> Option<&'static str> {
+    match notification_type {
+        "PlaybackStart" => Some("Play"),
+        "PlaybackProgress" => Some("Progress"),
+        "PlaybackStop" => Some("Stop"),
+        _ => None,
+    }
+}
+
+/// Identifier, source, lot and episode numbers of the first item of an import
+/// result, resolved to the show for episodes by the official sink.
+fn watching_target(
+    result: &ImportResult,
+) -> Option<(String, MediaSource, MediaLot, Option<i32>, Option<i32>)> {
+    let ImportCompletedItem::Metadata(item) = result.completed.first()? else {
+        return None;
+    };
+    let seen = item.seen_history.first()?;
+    Some((
+        item.identifier.clone(),
+        item.source,
+        item.lot,
+        seen.show_season_number,
+        seen.show_episode_number,
+    ))
 }
 
 /// Same as the production path but without the "currently watching" side
@@ -592,5 +643,35 @@ mod tests {
         });
         let result = run_sink(unplayed, None, None).unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn official_notification_types_map_to_watching_events() {
+        assert_eq!(official_to_watching_event("PlaybackStart"), Some("Play"));
+        assert_eq!(official_to_watching_event("PlaybackProgress"), Some("Progress"));
+        assert_eq!(official_to_watching_event("PlaybackStop"), Some("Stop"));
+        assert_eq!(official_to_watching_event("UserDataSaved"), None);
+        let payload = json!({"NotificationType": "PlaybackStart", "ItemType": "Movie"});
+        assert_eq!(
+            official_notification_type(&payload).as_deref(),
+            Some("PlaybackStart")
+        );
+    }
+
+    #[test]
+    fn watching_target_reads_show_identifier_and_episode() {
+        let result = jellyfin_official::build_import_result(
+            MediaLot::Show,
+            MediaSource::Tmdb,
+            "456".to_owned(),
+            Some(2),
+            Some(3),
+            dec!(10),
+        );
+        assert_eq!(
+            watching_target(&result),
+            Some(("456".to_owned(), MediaSource::Tmdb, MediaLot::Show, Some(2), Some(3)))
+        );
+        assert_eq!(watching_target(&ImportResult::default()), None);
     }
 }
